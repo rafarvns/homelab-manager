@@ -17,14 +17,18 @@ export interface ServerInput {
 
 export function getAllServers() {
   const db = getDb();
-  return db.prepare('SELECT * FROM servers ORDER BY name ASC').all();
+  return db.prepare('SELECT * FROM servers ORDER BY sort_order ASC, name ASC').all();
 }
 
 export function createServer(server: ServerInput) {
   const db = getDb();
+  
+  // Get max sort_order
+  const maxOrder = (db.prepare('SELECT MAX(sort_order) as maxOrder FROM servers').get() as any).maxOrder || 0;
+  
   const stmt = db.prepare(`
-    INSERT INTO servers (name, host, port, username, auth_type, password, private_key_path, passphrase, icon, group_name, tags, notes)
-    VALUES (@name, @host, @port, @username, @auth_type, @password, @private_key_path, @passphrase, @icon, @group_name, @tags, @notes)
+    INSERT INTO servers (name, host, port, username, auth_type, password, private_key_path, passphrase, icon, sort_order, group_name, tags, notes)
+    VALUES (@name, @host, @port, @username, @auth_type, @password, @private_key_path, @passphrase, @icon, @sort_order, @group_name, @tags, @notes)
   `);
   
   const payload = {
@@ -37,6 +41,7 @@ export function createServer(server: ServerInput) {
     private_key_path: server.private_key_path || null,
     passphrase: server.passphrase || null,
     icon: server.icon || 'Server',
+    sort_order: maxOrder + 1,
     group_name: server.group_name || null,
     tags: server.tags || null,
     notes: server.notes || null
@@ -75,6 +80,20 @@ export function updateServer(id: number, server: ServerInput) {
 
   stmt.run(payload);
   return payload;
+}
+
+export function updateServersOrder(ids: number[]) {
+  const db = getDb();
+  const stmt = db.prepare('UPDATE servers SET sort_order = ? WHERE id = ?');
+  
+  const transaction = db.transaction((serverIds: number[]) => {
+    for (let i = 0; i < serverIds.length; i++) {
+      stmt.run(i, serverIds[i]);
+    }
+  });
+
+  transaction(ids);
+  return { success: true };
 }
 
 export function deleteServer(id: number) {

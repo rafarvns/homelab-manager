@@ -4,7 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
 import { connectToServer, writeToStream, resizeStream, disconnectSession } from './ssh/ssh-manager'
-import { getAllServers, createServer, updateServer, deleteServer } from './handlers/server.handlers'
+import { getAllServers, createServer, updateServer, deleteServer, updateServersOrder } from './handlers/server.handlers'
 import { initDb } from './db/database'
 
 function createWindow(): void {
@@ -60,6 +60,7 @@ app.whenReady().then(() => {
   ipcMain.handle('server:create', (_, serverInput) => createServer(serverInput));
   ipcMain.handle('server:update', (_, id, serverInput) => updateServer(id, serverInput));
   ipcMain.handle('server:delete', (_, id) => deleteServer(id));
+  ipcMain.handle('server:update-order', (_, ids) => updateServersOrder(ids));
   
   ipcMain.handle('dialog:openFile', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({

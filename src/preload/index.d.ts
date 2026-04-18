@@ -70,6 +70,7 @@ declare global {
       serverCreate: (serverInput: ServerInput) => Promise<Server>;
       serverUpdate: (id: number, serverInput: ServerInput) => Promise<Server>;
       serverDelete: (id: number) => Promise<void>;
+      serverUpdateOrder: (ids: number[]) => Promise<{ success: boolean }>;
       dialogOpenFile: () => Promise<string | null>;
       sshConnect: (serverId: number, sessionId: string) => Promise<{success: boolean, sessionId: string}>;
       sshInput: (sessionId: string, data: string) => void;

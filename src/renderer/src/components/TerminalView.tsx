@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, memo } from 'react'
 import { Terminal } from 'xterm'
 import { FitAddon } from 'xterm-addon-fit'
 import { WebLinksAddon } from 'xterm-addon-web-links'
@@ -11,7 +11,7 @@ interface TerminalViewProps {
   isHidden: boolean;
 }
 
-export default function TerminalView({ sessionId, isActive, isHidden }: TerminalViewProps) {
+const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps) => {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -88,8 +88,10 @@ export default function TerminalView({ sessionId, isActive, isHidden }: Terminal
   useEffect(() => {
     if (isActive && !isHidden && fitAddonRef.current && xtermRef.current) {
       setTimeout(() => {
-        fitAddonRef.current!.fit()
-        window.api.sshResize(sessionId, xtermRef.current!.cols, xtermRef.current!.rows)
+        if (fitAddonRef.current) {
+          fitAddonRef.current.fit()
+          window.api.sshResize(sessionId, xtermRef.current!.cols, xtermRef.current!.rows)
+        }
       }, 50)
     }
   }, [isActive, isHidden, sessionId])
@@ -102,4 +104,6 @@ export default function TerminalView({ sessionId, isActive, isHidden }: Terminal
       <div ref={terminalRef} style={{ height: '100%', width: '100%' }} />
     </div>
   )
-}
+})
+
+export default TerminalView

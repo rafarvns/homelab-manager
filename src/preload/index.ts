@@ -9,6 +9,7 @@ const api = {
   serverCreate: (serverInput: any) => ipcRenderer.invoke('server:create', serverInput),
   serverUpdate: (id: number, serverInput: any) => ipcRenderer.invoke('server:update', id, serverInput),
   serverDelete: (id: number) => ipcRenderer.invoke('server:delete', id),
+  serverUpdateOrder: (ids: number[]) => ipcRenderer.invoke('server:update-order', ids),
   dialogOpenFile: () => ipcRenderer.invoke('dialog:openFile'),
   sshConnect: (serverId: number, sessionId: string) => ipcRenderer.invoke('ssh:connect', serverId, sessionId),
   sshInput: (sessionId: string, data: string) => ipcRenderer.send('ssh:input', sessionId, data),

@@ -1,24 +1,110 @@
 import { useEffect } from 'react'
 import * as LucideIcons from 'lucide-react'
-import { Plus, Terminal, X, Edit, Trash2, ChevronLeft, ChevronRight } from 'lucide-react'
+import { Plus, Terminal, X, ChevronLeft, ChevronRight, Settings } from 'lucide-react'
 import { useAppStore } from './store'
 import TerminalView from './components/TerminalView'
+import ServerSettings from './components/ServerSettings'
 import ServerForm from './components/ServerForm'
+
+// Dnd Kit Imports
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  horizontalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const ServerIcon = ({ name, size = 16 }: { name?: string; size?: number }) => {
   const IconComponent = (LucideIcons as any)[name || 'Server'] || LucideIcons.Server;
   return <IconComponent size={size} />;
 };
 
-function App() {
+const SortableServerItem = ({ server, isActive, isSidebarCollapsed, onSelect, onDoubleClick }: any) => {
   const { 
-    servers, sessions, activeSessionId, activeServerId, isAddModalOpen, isSidebarCollapsed,
-    fetchServers, toggleSidebar, openAddModal, openEditModal, addSession, createNewSession, setActiveSession, closeSession, switchServerContext 
-  } = useAppStore()
+    sessions, 
+  } = useAppStore();
+  
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: server.id });
 
-  useEffect(() => {
-    fetchServers()
-  }, [])
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : 1,
+    opacity: isDragging ? 0.6 : 1,
+  };
+
+  const serverSessions = sessions.filter(s => s.serverId === server.id);
+  const isConnected = serverSessions.some(s => s.status === 'connected');
+  const isReconnecting = serverSessions.some(s => s.status === 'reconnecting');
+  
+  const getStatusClass = () => {
+    if (isConnected) return 'status-connected';
+    if (isReconnecting) return 'status-reconnecting';
+    return 'status-disconnected';
+  };
+
+  return (
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={`server-item ${isActive ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+      onClick={() => onSelect(server.id)}
+      onDoubleClick={() => onDoubleClick(server.id)}
+      title={isSidebarCollapsed ? `${server.name}\n${server.username}@${server.host}` : undefined}
+      {...attributes}
+      {...listeners}
+    >
+      <div className="server-item-main">
+        <div className={`server-icon-wrapper ${getStatusClass()}`}>
+          <ServerIcon name={server.icon} />
+        </div>
+        {!isSidebarCollapsed && (
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="server-name">{server.name}</div>
+            <div className="server-host">{server.username}@{server.host}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const SortableTabItem = ({ session, servers, activeSessionId, onSelect, onClose }: any) => {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: session.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 100 : 1,
+    opacity: isDragging ? 0.8 : 1,
+  };
+
+  const server = servers.find(s => s.id === session.serverId);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -29,6 +115,70 @@ function App() {
       default: return 'var(--text-secondary)';
     }
   };
+
+  return (
+    <div 
+      ref={setNodeRef}
+      style={style}
+      className={`tab ${activeSessionId === session.id ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
+      onClick={() => onSelect(session.id)}
+      {...attributes}
+      {...listeners}
+    >
+      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <span style={{ 
+          display: 'inline-block', width: 8, height: 8, borderRadius: '50%', 
+          background: getStatusColor(session.status)
+        }} className={session.status === 'reconnecting' ? 'reconnecting-pulse' : ''}></span>
+        {session.type === 'settings' ? 'Settings' : `${server?.name || 'Session'}`}
+      </span>
+      <button 
+        className="tab-close" 
+        onClick={(e) => { e.stopPropagation(); onClose(session.id); }}
+        onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking close
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+};
+
+function App() {
+  const { 
+    servers, sessions, activeSessionId, activeServerId, isAddModalOpen, isSidebarCollapsed,
+    fetchServers, toggleSidebar, openAddModal, addSession, createNewSession, openSettings, setActiveSession, closeSession, switchServerContext,
+    reorderServers, reorderSessions
+  } = useAppStore()
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  useEffect(() => {
+    fetchServers()
+  }, [])
+
+  const handleServerDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      reorderServers(active.id as number, over.id as number);
+    }
+  };
+
+  const handleTabDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      reorderSessions(active.id as string, over.id as string);
+    }
+  };
+
 
   return (
     <div className="app-container">
@@ -44,61 +194,27 @@ function App() {
         </div>
 
         <div className="server-list">
-          {servers.map(server => {
-            const serverSessions = sessions.filter(s => s.serverId === server.id);
-            const hasActiveSession = serverSessions.some(s => s.status === 'connected');
-            const isReconnecting = serverSessions.some(s => s.status === 'reconnecting');
-            const isActive = activeServerId === server.id;
-
-            return (
-              <div 
-                key={server.id} 
-                className={`server-item ${isActive ? 'active' : ''}`}
-                onClick={() => switchServerContext(server.id)}
-                onDoubleClick={() => addSession(server.id)}
-                title={isSidebarCollapsed ? `${server.name}\n${server.username}@${server.host}` : undefined}
-              >
-                <div className="server-item-main">
-                  <div className="server-icon-wrapper">
-                    <ServerIcon name={server.icon} />
-                    {(hasActiveSession || isReconnecting) && (
-                      <span className={`status-dot ${isReconnecting ? 'reconnecting' : 'connected'}`} />
-                    )}
-                  </div>
-                  {!isSidebarCollapsed && (
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div className="server-name">{server.name}</div>
-                      <div className="server-host">{server.username}@{server.host}</div>
-                    </div>
-                  )}
-                </div>
-                {!isSidebarCollapsed && (
-                  <div className="server-actions">
-                    <button 
-                      className="icon-btn edit-btn" 
-                      onClick={(e) => { e.stopPropagation(); openEditModal(server); }}
-                      title="Edit Server"
-                    >
-                      <Edit size={12} />
-                    </button>
-                    <button 
-                      className="icon-btn delete-btn" 
-                      onClick={async (e) => { 
-                        e.stopPropagation(); 
-                        if (confirm('Are you sure you want to delete this server?')) {
-                          await window.api.serverDelete(server.id);
-                          await fetchServers();
-                        }
-                      }}
-                      title="Delete Server"
-                    >
-                      <Trash2 size={12} />
-                    </button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          <DndContext 
+            sensors={sensors}
+            collisionDetection={closestCenter}
+            onDragEnd={handleServerDragEnd}
+          >
+            <SortableContext 
+              items={servers.map(s => s.id)}
+              strategy={verticalListSortingStrategy}
+            >
+              {servers.map(server => (
+                <SortableServerItem 
+                  key={server.id} 
+                  server={server}
+                  isActive={activeServerId === server.id}
+                  isSidebarCollapsed={isSidebarCollapsed}
+                  onSelect={switchServerContext}
+                  onDoubleClick={addSession}
+                />
+              ))}
+            </SortableContext>
+          </DndContext>
           {servers.length === 0 && !isSidebarCollapsed && (
             <div className="no-servers">
               No servers configured.<br/>Click + to add one.
@@ -124,48 +240,71 @@ function App() {
           <>
             {/* Tabs */}
             <div className="tab-bar">
-              {sessions.filter(s => s.serverId === activeServerId).map((session, index) => {
-                const server = servers.find(s => s.id === session.serverId)
-                return (
-                  <div 
-                    key={session.id} 
-                    className={`tab ${activeSessionId === session.id ? 'active' : ''}`}
-                    onClick={() => setActiveSession(session.id)}
+              <div className="tabs-scroll-area">
+                <DndContext 
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleTabDragEnd}
+                >
+                  <SortableContext 
+                    items={sessions.filter(s => s.serverId === activeServerId).map(s => s.id)}
+                    strategy={horizontalListSortingStrategy}
                   >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <span style={{ 
-                        display: 'inline-block', width: 8, height: 8, borderRadius: '50%', 
-                        background: getStatusColor(session.status)
-                      }} className={session.status === 'reconnecting' ? 'reconnecting-pulse' : ''}></span>
-                      {server?.name} #{index + 1}
-                    </span>
-                    <button 
-                      className="tab-close" 
-                      onClick={(e) => { e.stopPropagation(); closeSession(session.id); }}
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )
-              })}
+                    {sessions.filter(s => s.serverId === activeServerId).map((session) => (
+                      <SortableTabItem 
+                        key={session.id} 
+                        session={session}
+                        servers={servers}
+                        activeSessionId={activeSessionId}
+                        onSelect={setActiveSession}
+                        onClose={closeSession}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+                <button 
+                  className="new-tab-btn" 
+                  onClick={() => createNewSession(activeServerId)}
+                  title="New Tab"
+                >
+                  <Plus size={14} />
+                </button>
+              </div>
               <button 
-                className="new-tab-btn" 
-                onClick={() => createNewSession(activeServerId)}
-                title="New Tab"
+                className={`settings-tab-btn ${sessions.find(s => s.id === activeSessionId)?.type === 'settings' ? 'active' : ''}`}
+                onClick={() => openSettings(activeServerId)}
+                title="Server Settings"
               >
-                <Plus size={14} />
+                <Settings size={18} />
               </button>
             </div>
             
-            {/* Terminals (keep them mapped but only show active server's ones) */}
-            {sessions.map(session => (
-              <TerminalView 
-                key={session.id} 
-                sessionId={session.id} 
-                isActive={activeSessionId === session.id} 
-                isHidden={session.serverId !== activeServerId}
-              />
-            ))}
+            {/* Terminals & Settings (keep them mapped but only show active server's ones) */}
+            {[...sessions].sort((a, b) => a.id.localeCompare(b.id)).map(session => {
+              const server = servers.find(s => s.id === session.serverId);
+              const isSelected = activeSessionId === session.id;
+              const isDifferentServer = session.serverId !== activeServerId;
+              
+              if (session.type === 'settings' && server) {
+                return (
+                  <ServerSettings 
+                    key={session.id} 
+                    server={server} 
+                    isActive={isSelected && !isDifferentServer}
+                    isHidden={!isSelected || isDifferentServer}
+                  />
+                );
+              }
+
+              return (
+                <TerminalView 
+                  key={session.id} 
+                  sessionId={session.id} 
+                  isActive={isSelected && !isDifferentServer}
+                  isHidden={!isSelected || isDifferentServer}
+                />
+              );
+            })}
           </>
         ) : (
           <div className="empty-state">

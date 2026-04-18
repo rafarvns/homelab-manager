@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { arrayMove } from '@dnd-kit/sortable';
 export interface Server {
   id: number;
   name: string;
@@ -15,6 +16,7 @@ export interface Server {
 interface Session {
   id: string;
   serverId: number;
+  type: 'terminal' | 'settings';
   status: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
 }
 
@@ -38,10 +40,13 @@ interface AppState {
   
   addSession: (serverId: number) => Promise<void>;
   createNewSession: (serverId: number) => Promise<void>;
+  openSettings: (serverId: number) => void;
   closeSession: (sessionId: string) => void;
   setActiveSession: (sessionId: string) => void;
   switchServerContext: (serverId: number) => void;
   updateSessionStatus: (sessionId: string, status: Session['status']) => void;
+  reorderServers: (activeId: number, overId: number) => Promise<void>;
+  reorderSessions: (activeId: string, overId: string) => void;
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -71,7 +76,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     // If double-clicking, we switch to context and check sessions
     set({ activeServerId: serverId });
 
-    const existingSessions = get().sessions.filter(s => s.serverId === serverId);
+    const existingSessions = get().sessions.filter(s => s.serverId === serverId && s.type === 'terminal');
     if (existingSessions.length > 0) {
       // Just focus the last active session for this server
       const lastSessionId = get().activeSessionPerServer[serverId] || existingSessions[0].id;
@@ -81,7 +86,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     set((state) => ({
-      sessions: [...state.sessions, { id: sessionId, serverId, status: 'connecting' }],
+      sessions: [...state.sessions, { id: sessionId, serverId, type: 'terminal', status: 'connecting' }],
       activeSessionId: sessionId,
       activeSessionPerServer: { ...state.activeSessionPerServer, [serverId]: sessionId }
     }));
@@ -104,7 +109,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   createNewSession: async (serverId: number) => {
     const sessionId = `session_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
     set((state) => ({
-      sessions: [...state.sessions, { id: sessionId, serverId, status: 'connecting' }],
+      sessions: [...state.sessions, { id: sessionId, serverId, type: 'terminal', status: 'connecting' }],
       activeSessionId: sessionId,
       activeSessionPerServer: { ...state.activeSessionPerServer, [serverId]: sessionId }
     }));
@@ -122,6 +127,24 @@ export const useAppStore = create<AppState>((set, get) => ({
         sessions: state.sessions.map(s => s.id === sessionId ? { ...s, status: 'error' } : s)
       }));
     }
+  },
+
+  openSettings: (serverId: number) => {
+    const existing = get().sessions.find(s => s.serverId === serverId && s.type === 'settings');
+    if (existing) {
+      set({ activeSessionId: existing.id });
+      set((state) => ({
+        activeSessionPerServer: { ...state.activeSessionPerServer, [serverId]: existing.id }
+      }));
+      return;
+    }
+
+    const sessionId = `settings_${serverId}`;
+    set((state) => ({
+      sessions: [...state.sessions, { id: sessionId, serverId, type: 'settings', status: 'connected' }],
+      activeSessionId: sessionId,
+      activeSessionPerServer: { ...state.activeSessionPerServer, [serverId]: sessionId }
+    }));
   },
 
   switchServerContext: (serverId: number) => {
@@ -169,5 +192,27 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       sessions: state.sessions.map(s => s.id === sessionId ? { ...s, status } : s)
     }));
+  },
+  
+  reorderServers: async (activeId: number, overId: number) => {
+    const { servers } = get();
+    const oldIndex = servers.findIndex(s => s.id === activeId);
+    const newIndex = servers.findIndex(s => s.id === overId);
+    
+    if (oldIndex !== newIndex) {
+      const newServers = arrayMove(servers, oldIndex, newIndex);
+      set({ servers: newServers });
+      await window.api.serverUpdateOrder(newServers.map(s => s.id));
+    }
+  },
+
+  reorderSessions: (activeId: string, overId: string) => {
+    const { sessions } = get();
+    const oldIndex = sessions.findIndex(s => s.id === activeId);
+    const newIndex = sessions.findIndex(s => s.id === overId);
+
+    if (oldIndex !== newIndex) {
+      set({ sessions: arrayMove(sessions, oldIndex, newIndex) });
+    }
   }
 }));
