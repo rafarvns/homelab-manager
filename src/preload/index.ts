@@ -23,7 +23,12 @@ const api = {
   removeSshListeners: (sessionId: string) => {
     ipcRenderer.removeAllListeners(`ssh:data:${sessionId}`);
     ipcRenderer.removeAllListeners(`ssh:status:${sessionId}`);
-  }
+  },
+  // Context Graph
+  aiIndexProject: () => ipcRenderer.invoke('ai:index-project'),
+  aiRetrieveContext: (request: unknown) => ipcRenderer.invoke('ai:retrieve-context', request),
+  aiAddInteraction: (content: string) => ipcRenderer.invoke('ai:add-interaction', content),
+  aiGetStats: () => ipcRenderer.invoke('ai:get-stats'),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

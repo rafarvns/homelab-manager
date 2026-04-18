@@ -6,6 +6,13 @@ import icon from '../../resources/icon.png?asset'
 import { connectToServer, writeToStream, resizeStream, disconnectSession } from './ssh/ssh-manager'
 import { getAllServers, createServer, updateServer, deleteServer } from './handlers/server.handlers'
 import { initDb } from './db/database'
+import {
+  initContextGraph,
+  aiIndexProject,
+  aiRetrieveContext,
+  aiAddInteraction,
+  aiGetStats,
+} from './ai/index'
 
 function createWindow(): void {
   // Create the browser window.
@@ -56,6 +63,9 @@ app.whenReady().then(() => {
   // Initialize Database
   initDb();
 
+  // Initialize Context Graph (must run after DB)
+  initContextGraph();
+
   ipcMain.handle('server:list', () => getAllServers());
   ipcMain.handle('server:create', (_, serverInput) => createServer(serverInput));
   ipcMain.handle('server:update', (_, id, serverInput) => updateServer(id, serverInput));
@@ -78,6 +88,13 @@ app.whenReady().then(() => {
   ipcMain.on('ssh:input', (_, sessionId, data) => writeToStream(sessionId, data));
   ipcMain.on('ssh:resize', (_, sessionId, cols, rows) => resizeStream(sessionId, cols, rows));
   ipcMain.on('ssh:disconnect', (_, sessionId) => disconnectSession(sessionId));
+
+  // Context Graph IPC
+  ipcMain.handle('ai:index-project', async () => aiIndexProject());
+  ipcMain.handle('ai:retrieve-context', async (_, request) => aiRetrieveContext(request));
+  ipcMain.handle('ai:add-interaction', async (_, content: string) => aiAddInteraction(content));
+  ipcMain.handle('ai:get-stats', () => aiGetStats());
+
 
   createWindow()
 

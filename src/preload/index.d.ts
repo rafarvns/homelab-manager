@@ -20,6 +20,47 @@ export interface Server extends ServerInput {
   updated_at: string;
 }
 
+// ---------- Context Graph Types ----------
+
+export interface ContextRequest {
+  query: string;
+  topK?: number;
+  expandDepth?: number;
+  maxTokens?: number;
+}
+
+export interface SearchResult {
+  node: {
+    id: string;
+    type: string;
+    content: string;
+    filePath?: string;
+  };
+  score: number;
+}
+
+export interface ContextResponse {
+  seedResults: SearchResult[];
+  expandedNodes: Array<{ id: string; type: string; content: string; filePath?: string }>;
+  prompt: string;
+  tokenCount: number;
+}
+
+export interface IndexResult {
+  nodesCreated: number;
+  edgesCreated: number;
+  filesScanned: number;
+  durationMs: number;
+}
+
+export interface GraphStats {
+  nodeCount: number;
+  edgeCount: number;
+  cacheHitCount: number;
+  cacheMissCount: number;
+  lastIndexedAt: string | null;
+}
+
 declare global {
   interface Window {
     electron: ElectronAPI
@@ -36,6 +77,11 @@ declare global {
       onSshData: (sessionId: string, callback: (data: string) => void) => void;
       onSshStatus: (sessionId: string, callback: (status: string) => void) => void;
       removeSshListeners: (sessionId: string) => void;
+      // Context Graph
+      aiIndexProject: () => Promise<IndexResult>;
+      aiRetrieveContext: (request: ContextRequest) => Promise<ContextResponse>;
+      aiAddInteraction: (content: string) => Promise<void>;
+      aiGetStats: () => Promise<GraphStats>;
     }
   }
 }
