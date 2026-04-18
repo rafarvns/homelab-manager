@@ -6,13 +6,6 @@ import icon from '../../resources/icon.png?asset'
 import { connectToServer, writeToStream, resizeStream, disconnectSession } from './ssh/ssh-manager'
 import { getAllServers, createServer, updateServer, deleteServer } from './handlers/server.handlers'
 import { initDb } from './db/database'
-import {
-  initContextGraph,
-  aiIndexProject,
-  aiRetrieveContext,
-  aiAddInteraction,
-  aiGetStats,
-} from './ai/index'
 
 function createWindow(): void {
   // Create the browser window.
@@ -63,9 +56,6 @@ app.whenReady().then(() => {
   // Initialize Database
   initDb();
 
-  // Initialize Context Graph (must run after DB)
-  initContextGraph();
-
   ipcMain.handle('server:list', () => getAllServers());
   ipcMain.handle('server:create', (_, serverInput) => createServer(serverInput));
   ipcMain.handle('server:update', (_, id, serverInput) => updateServer(id, serverInput));
@@ -89,14 +79,30 @@ app.whenReady().then(() => {
   ipcMain.on('ssh:resize', (_, sessionId, cols, rows) => resizeStream(sessionId, cols, rows));
   ipcMain.on('ssh:disconnect', (_, sessionId) => disconnectSession(sessionId));
 
-  // Context Graph IPC
-  ipcMain.handle('ai:index-project', async () => aiIndexProject());
-  ipcMain.handle('ai:retrieve-context', async (_, request) => aiRetrieveContext(request));
-  ipcMain.handle('ai:add-interaction', async (_, content: string) => aiAddInteraction(content));
-  ipcMain.handle('ai:get-stats', () => aiGetStats());
-
-
   createWindow()
+
+  // ── Dev-only: Context Graph (AI tooling) ──────────────────────────
+  // Dynamic import keeps the entire ai/ module OUT of the production
+  // bundle. electron-vite / Rollup will NOT include it in build:win.
+  if (is.dev) {
+    import('./ai/index').then(ai => {
+      ai.initContextGraph()
+
+      // Register IPC handlers
+      ipcMain.handle('ai:index-project', () => ai.aiIndexProject())
+      ipcMain.handle('ai:retrieve-context', (_, req) => ai.aiRetrieveContext(req))
+      ipcMain.handle('ai:add-interaction', (_, content: string) => ai.aiAddInteraction(content))
+      ipcMain.handle('ai:get-stats', () => ai.aiGetStats())
+
+      // Auto-index on boot
+      ai.aiIndexProject()
+        .then(r => console.log(
+          `[ContextGraph] Auto-index done: ${r.nodesCreated} nodes, ` +
+          `${r.edgesCreated} edges, ${r.filesScanned} files (${r.durationMs}ms)`
+        ))
+        .catch(err => console.error('[ContextGraph] Auto-index failed:', err))
+    }).catch(err => console.error('[ContextGraph] Failed to load AI module:', err))
+  }
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

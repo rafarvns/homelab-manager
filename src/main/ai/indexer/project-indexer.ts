@@ -116,12 +116,28 @@ export class ProjectIndexer {
     let nodesCreated = 0
     let edgesCreated = 0
 
+    // ── Pass 1: Insert ALL nodes first ─────────────────────────────
+    // Edges reference nodes from other files → we must populate all
+    // nodes before inserting any cross-file edges.
+    const allEdges: GraphEdge[] = []
     for (const filePath of files) {
       const { nodes, edges } = await this.processFile(filePath)
       nodes.forEach(n => graphStore.insertNode(n))
-      edges.forEach(e => graphStore.insertEdge(e))
       nodesCreated += nodes.length
-      edgesCreated += edges.length
+      allEdges.push(...edges)
+    }
+
+    // ── Pass 2: Insert edges (all nodes guaranteed to exist now) ────
+    // Silently ignore edges whose target node doesn't exist — this
+    // happens for import paths that resolved to a file outside src/
+    // (e.g. type-only imports from node_modules resolved as relative).
+    for (const edge of allEdges) {
+      try {
+        graphStore.insertEdge(edge)
+        edgesCreated++
+      } catch {
+        // Skip — FK constraint: target node not in graph (external import)
+      }
     }
 
     return {
