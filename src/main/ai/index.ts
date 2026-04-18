@@ -20,6 +20,7 @@ import * as graphStore from './graph/graph-store'
 import { expandContext } from './graph/graph-traversal'
 import { searchRelevantNodes } from './search/vector-search'
 import { buildPrompt } from './prompt/prompt-builder'
+import { initAiDb } from './db/ai-database'
 
 const DEFAULT_TOP_K = 10
 const DEFAULT_EXPAND_DEPTH = 2
@@ -35,6 +36,7 @@ let projectRoot: string | null = null
 
 export function initContextGraph(): void {
   try {
+    initAiDb()  // ← opens homelab-manager-ai-dev.sqlite (separate from app db)
     projectRoot = app.getAppPath()
     const provider = new TFIDFProvider(512)
     embeddingService = new EmbeddingService(provider)

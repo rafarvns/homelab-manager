@@ -2,7 +2,7 @@
 // Graph Store — SQLite-backed CRUD for nodes and edges
 // ============================================================
 
-import { getDb } from '../../db/database'
+import { getAiDb } from '../db/ai-database'
 import type { GraphNode, GraphEdge } from '../types'
 
 // ---------- Serialization helpers ----------
@@ -64,7 +64,7 @@ function rowToEdge(row: EdgeRow): GraphEdge {
 // ---------- Public API ----------
 
 export function insertNode(node: GraphNode): void {
-  const db = getDb()
+  const db = getAiDb()
   db.prepare(`
     INSERT OR REPLACE INTO graph_nodes (id, type, content, embedding, file_path, metadata, created_at)
     VALUES (@id, @type, @content, @embedding, @filePath, @metadata, @createdAt)
@@ -80,7 +80,7 @@ export function insertNode(node: GraphNode): void {
 }
 
 export function insertEdge(edge: GraphEdge): void {
-  const db = getDb()
+  const db = getAiDb()
   db.prepare(`
     INSERT OR REPLACE INTO graph_edges (id, from_node, to_node, relation, weight)
     VALUES (@id, @from, @to, @relation, @weight)
@@ -94,19 +94,19 @@ export function insertEdge(edge: GraphEdge): void {
 }
 
 export function getNode(id: string): GraphNode | undefined {
-  const db = getDb()
+  const db = getAiDb()
   const row = db.prepare('SELECT * FROM graph_nodes WHERE id = ?').get(id) as NodeRow | undefined
   return row ? rowToNode(row) : undefined
 }
 
 export function getAllNodes(): GraphNode[] {
-  const db = getDb()
+  const db = getAiDb()
   const rows = db.prepare('SELECT * FROM graph_nodes').all() as NodeRow[]
   return rows.map(rowToNode)
 }
 
 export function getEdgesByNode(nodeId: string, direction: 'from' | 'to' | 'both'): GraphEdge[] {
-  const db = getDb()
+  const db = getAiDb()
   let rows: EdgeRow[]
 
   if (direction === 'from') {
@@ -121,29 +121,29 @@ export function getEdgesByNode(nodeId: string, direction: 'from' | 'to' | 'both'
 }
 
 export function deleteNode(id: string): void {
-  const db = getDb()
+  const db = getAiDb()
   db.prepare('DELETE FROM graph_nodes WHERE id = ?').run(id)
 }
 
 export function deleteNodesByFile(filePath: string): void {
-  const db = getDb()
+  const db = getAiDb()
   db.prepare('DELETE FROM graph_nodes WHERE file_path = ?').run(filePath)
 }
 
 export function clearGraph(): void {
-  const db = getDb()
+  const db = getAiDb()
   // Edges are deleted via ON DELETE CASCADE from graph_nodes
   db.prepare('DELETE FROM graph_nodes').run()
 }
 
 export function getNodeCount(): number {
-  const db = getDb()
+  const db = getAiDb()
   const row = db.prepare('SELECT COUNT(*) as count FROM graph_nodes').get() as { count: number }
   return row.count
 }
 
 export function getEdgeCount(): number {
-  const db = getDb()
+  const db = getAiDb()
   const row = db.prepare('SELECT COUNT(*) as count FROM graph_edges').get() as { count: number }
   return row.count
 }

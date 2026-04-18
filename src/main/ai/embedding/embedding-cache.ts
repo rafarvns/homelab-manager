@@ -3,7 +3,7 @@
 // Prevents recomputing embeddings for unchanged content.
 // ============================================================
 
-import { getDb } from '../../db/database'
+import { getAiDb } from '../db/ai-database'
 import { createHash } from 'crypto'
 
 let cacheHits = 0
@@ -32,7 +32,7 @@ function embeddingToBuffer(embedding: number[]): Buffer {
 }
 
 export function getCachedEmbedding(content: string, providerName: string): number[] | null {
-  const db = getDb()
+  const db = getAiDb()
   const hash = contentHash(content, providerName)
   const row = db
     .prepare('SELECT embedding, dimensions FROM embedding_cache WHERE content_hash = ?')
@@ -52,7 +52,7 @@ export function setCachedEmbedding(
   providerName: string,
   embedding: number[]
 ): void {
-  const db = getDb()
+  const db = getAiDb()
   const hash = contentHash(content, providerName)
   db.prepare(`
     INSERT OR REPLACE INTO embedding_cache (content_hash, embedding, dimensions, provider, created_at)
@@ -70,7 +70,7 @@ export function getCacheStats(): { hits: number; misses: number } {
 }
 
 export function clearEmbeddingCache(): void {
-  const db = getDb()
+  const db = getAiDb()
   db.prepare('DELETE FROM embedding_cache').run()
   cacheHits = 0
   cacheMisses = 0
