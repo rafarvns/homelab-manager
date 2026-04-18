@@ -1,3 +1,7 @@
+---
+description: Workflow for adding a new Main-to-Renderer IPC binding in Homelab Manager
+---
+
 # Add IPC Channel Workflow
 
 Because of the strict `contextBridge` exposure and TypeScript typings in Homelab Manager, adding a new Main-to-Renderer binding requires touching exactly 4 files in order.

@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Error Handling Standards
 
 Homelab Manager processes complex network requests (SSH) and disk operations. Unhandled errors crash the app or leave the UI hanging in a permanent "connecting" state.

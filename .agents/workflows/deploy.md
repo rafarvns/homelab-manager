@@ -1,3 +1,7 @@
+---
+description: Rigorous process for building, packaging, and verifying the Electron application for production distribution
+---
+
 # Production Deploy Workflow
 
 Rigorous process for building, packaging, and verifying the Electron application for production distribution (specifically Windows).

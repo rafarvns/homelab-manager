@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Type Safety 
 
 TypeScript in this project must be strictly enforced across the IPC boundary.

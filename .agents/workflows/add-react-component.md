@@ -1,3 +1,7 @@
+---
+description: Procedure for adding new React UI components to the Homelab Manager Renderer layout
+---
+
 # Add React Component Workflow
 
 Standard procedure for adding new UI components to the Homelab Manager Renderer layout.

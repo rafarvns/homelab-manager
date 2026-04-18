@@ -1,3 +1,7 @@
+---
+description: Troubleshooting steps for fixing native module build failures (better-sqlite3, ssh2) in Electron
+---
+
 # Fix Native Module Build Failures Workflow
 
 `better-sqlite3` and `ssh2` are native C++ modules. They must be compiled against **Electron's specific Node headers**, not the generic OS Node version. Failure to do so throws `Node API mismatch` or `DLL missing` errors at runtime.

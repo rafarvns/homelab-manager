@@ -1,3 +1,7 @@
+---
+description: Process to prepare the local environment for development from a fresh clone or dependency change
+---
+
 # Development Setup Workflow
 
 Process to prepare the local environment for development from a fresh clone or after major dependency changes.

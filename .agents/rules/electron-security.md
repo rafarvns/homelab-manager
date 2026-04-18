@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Electron Security Posture
 
 ## 1. Content Security Policy (CSP)

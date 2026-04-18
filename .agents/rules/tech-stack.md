@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Technology Stack & Architecture
 
 ## Core Tech Stack

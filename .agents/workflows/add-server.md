@@ -1,3 +1,7 @@
+---
+description: Workflow for extending the server data model and UI with new configuration fields
+---
+
 # Add Server Property Workflow
 
 Detailed process for extending the server data model and UI. Use this when the user needs a new configuration field for a server (e.g., `theme_color`, `startup_script`).

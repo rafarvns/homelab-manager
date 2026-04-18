@@ -1,3 +1,7 @@
+---
+trigger: always_on
+---
+
 # Design Standards
 
 Rigorous aesthetic and component standards for Homelab Manager. 

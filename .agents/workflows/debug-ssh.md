@@ -1,3 +1,7 @@
+---
+description: Systematic process for diagnosing and fixing SSH connection failures within the Homelab Manager
+---
+
 # Debug SSH Connection Workflow
 
 Systematic process for diagnosing and fixing SSH connection failures within the Homelab Manager using the `ssh-expert` guidelines.
