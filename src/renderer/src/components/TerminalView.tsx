@@ -8,9 +8,10 @@ import { useAppStore } from '../store'
 interface TerminalViewProps {
   sessionId: string;
   isActive: boolean;
+  isHidden: boolean;
 }
 
-export default function TerminalView({ sessionId, isActive }: TerminalViewProps) {
+export default function TerminalView({ sessionId, isActive, isHidden }: TerminalViewProps) {
   const terminalRef = useRef<HTMLDivElement>(null)
   const xtermRef = useRef<Terminal | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
@@ -49,7 +50,7 @@ export default function TerminalView({ sessionId, isActive }: TerminalViewProps)
 
     // Resize handler
     const handleResize = () => {
-      if (isActive && fitAddonRef.current) {
+      if (isActive && !isHidden && fitAddonRef.current) {
         fitAddonRef.current.fit()
         window.api.sshResize(sessionId, term.cols, term.rows)
       }
@@ -69,6 +70,10 @@ export default function TerminalView({ sessionId, isActive }: TerminalViewProps)
       updateSessionStatus(sessionId, status as any)
       if (status === 'disconnected') {
         term.write('\r\n\x1b[31;1m[Session Disconnected]\x1b[0m\r\n')
+      } else if (status === 'reconnecting') {
+        term.write('\r\n\x1b[33;1m[Connection lost. Reconnecting...]\x1b[0m\r\n')
+      } else if (status === 'connected') {
+        term.write('\x1b[32;1m[Reconnected!]\x1b[0m\r\n')
       }
     })
 
@@ -79,20 +84,20 @@ export default function TerminalView({ sessionId, isActive }: TerminalViewProps)
     }
   }, [sessionId]) // Run once per session
 
-  // Refit when becoming active
+  // Refit when becoming active and NOT hidden
   useEffect(() => {
-    if (isActive && fitAddonRef.current && xtermRef.current) {
+    if (isActive && !isHidden && fitAddonRef.current && xtermRef.current) {
       setTimeout(() => {
         fitAddonRef.current!.fit()
         window.api.sshResize(sessionId, xtermRef.current!.cols, xtermRef.current!.rows)
       }, 50)
     }
-  }, [isActive, sessionId])
+  }, [isActive, isHidden, sessionId])
 
   return (
     <div 
-      className={`terminal-container ${isActive ? 'active' : ''}`} 
-      style={{ height: '100%', width: '100%' }}
+      className={`terminal-container ${isActive && !isHidden ? 'active' : ''}`} 
+      style={{ height: '100%', width: '100%', display: (isActive && !isHidden) ? 'block' : 'none' }}
     >
       <div ref={terminalRef} style={{ height: '100%', width: '100%' }} />
     </div>

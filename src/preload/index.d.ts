@@ -9,6 +9,7 @@ export interface ServerInput {
   password?: string;
   private_key_path?: string;
   passphrase?: string;
+  icon?: string;
   group_name?: string;
   tags?: string;
   notes?: string;

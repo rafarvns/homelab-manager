@@ -40,6 +40,7 @@ function migrate() {
       password      TEXT,
       private_key_path TEXT,
       passphrase    TEXT,
+      icon          TEXT    NOT NULL DEFAULT 'Server',
       group_name    TEXT,
       tags          TEXT,
       notes         TEXT,
@@ -58,4 +59,11 @@ function migrate() {
   `;
 
   db.exec(schema);
+
+  // Ensure 'icon' column exists in case the table was already created
+  const serverTableInfo = (db.prepare("PRAGMA table_info(servers)").all() as any[]);
+  const hasIcon = serverTableInfo.some(col => col.name === 'icon');
+  if (!hasIcon) {
+    db.exec("ALTER TABLE servers ADD COLUMN icon TEXT NOT NULL DEFAULT 'Server'");
+  }
 }

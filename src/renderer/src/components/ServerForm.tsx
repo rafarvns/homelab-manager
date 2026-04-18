@@ -1,4 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
+import * as LucideIcons from 'lucide-react'
+import { ChevronDown, Check } from 'lucide-react'
+
 export interface ServerInput {
   name: string;
   host: string;
@@ -8,8 +11,78 @@ export interface ServerInput {
   password?: string;
   private_key_path?: string;
   passphrase?: string;
+  icon?: string;
 }
 import { useAppStore } from '../store'
+
+const AVAILABLE_ICONS = [
+  'Server', 'Terminal', 'Database', 'Globe', 'Cpu', 
+  'HardDrive', 'Cloud', 'Shield', 'Zap', 'Activity',
+  'Box', 'Monitor', 'Settings', 'Wifi', 'Lock'
+];
+
+interface IconDropdownProps {
+  selectedIcon: string;
+  onChange: (icon: string) => void;
+}
+
+function IconDropdown({ selectedIcon, onChange }: IconDropdownProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const SelectedIconComp = (LucideIcons as any)[selectedIcon] || LucideIcons.Server;
+
+  return (
+    <div className="icon-dropdown" ref={dropdownRef}>
+      <button 
+        type="button" 
+        className="icon-dropdown-trigger" 
+        onClick={() => setIsOpen(!isOpen)}
+      >
+        <div className="selected-icon-preview">
+          <SelectedIconComp size={18} />
+          <span>{selectedIcon}</span>
+        </div>
+        <ChevronDown size={14} className={`chevron ${isOpen ? 'open' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="icon-dropdown-menu">
+          <div className="icon-grid">
+            {AVAILABLE_ICONS.map(iconName => {
+              const IconComp = (LucideIcons as any)[iconName];
+              return (
+                <button
+                  key={iconName}
+                  type="button"
+                  className={`icon-item ${selectedIcon === iconName ? 'active' : ''}`}
+                  onClick={() => {
+                    onChange(iconName);
+                    setIsOpen(false);
+                  }}
+                >
+                  <IconComp size={16} />
+                  <span className="icon-label">{iconName}</span>
+                  {selectedIcon === iconName && <Check size={12} className="check-mark" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ServerForm() {
   const { closeAddModal, fetchServers, editingServer } = useAppStore()
@@ -22,7 +95,8 @@ export default function ServerForm() {
     auth_type: editingServer?.auth_type || 'password',
     password: editingServer?.password || '',
     private_key_path: editingServer?.private_key_path || '',
-    passphrase: editingServer?.passphrase || ''
+    passphrase: editingServer?.passphrase || '',
+    icon: editingServer?.icon || 'Server'
   })
 
   useEffect(() => {
@@ -35,7 +109,8 @@ export default function ServerForm() {
         auth_type: editingServer.auth_type,
         password: editingServer.password || '',
         private_key_path: editingServer.private_key_path || '',
-        passphrase: editingServer.passphrase || ''
+        passphrase: editingServer.passphrase || '',
+        icon: editingServer.icon || 'Server'
       })
     }
   }, [editingServer])
@@ -82,6 +157,14 @@ export default function ServerForm() {
               value={formData.name} 
               onChange={e => setFormData({...formData, name: e.target.value})} 
               placeholder="e.g. Prod DB, NAS Home..."
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Icon</label>
+            <IconDropdown 
+              selectedIcon={formData.icon || 'Server'} 
+              onChange={(icon) => setFormData({...formData, icon})} 
             />
           </div>
           

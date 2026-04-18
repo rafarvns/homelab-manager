@@ -7,6 +7,8 @@ interface ActiveSession {
   client: Client;
   stream: any;
   serverId: number;
+  isManualDisconnect: boolean;
+  reconnectAttempts: number;
 }
 
 const activeSessions = new Map<string, ActiveSession>();
@@ -15,9 +17,31 @@ export async function connectToServer(serverId: number, sessionId: string, webCo
   const server = getServer(serverId) as any;
   if (!server) throw new Error("Server not found");
 
-  const client = new Client();
+  // If session already exists and is reconnecting, don't create a new one
+  let session = activeSessions.get(sessionId);
+  if (!session) {
+    session = { 
+      client: new Client(), 
+      stream: null, 
+      serverId, 
+      isManualDisconnect: false,
+      reconnectAttempts: 0 
+    };
+    activeSessions.set(sessionId, session);
+  }
+
+  return performConnection(session, sessionId, server, webContents);
+}
+
+async function performConnection(session: ActiveSession, sessionId: string, server: any, webContents: WebContents) {
+  const client = session.client;
 
   return new Promise((resolve, reject) => {
+    // Clear previous listeners to avoid memory leaks during reconnect
+    client.removeAllListeners('ready');
+    client.removeAllListeners('error');
+    client.removeAllListeners('close');
+
     client.on('ready', () => {
       client.shell((err, stream) => {
         if (err) {
@@ -25,21 +49,31 @@ export async function connectToServer(serverId: number, sessionId: string, webCo
           return reject(err);
         }
 
-        activeSessions.set(sessionId, { client, stream, serverId });
+        session.stream = stream;
+        session.reconnectAttempts = 0;
+        webContents.send(`ssh:status:${sessionId}`, 'connected');
 
-        // Forward data from SSH to Renderer
         stream.on('data', (data: Buffer) => {
           webContents.send(`ssh:data:${sessionId}`, data.toString('binary'));
         }).on('close', () => {
-          client.end();
-          webContents.send(`ssh:status:${sessionId}`, 'disconnected');
-          activeSessions.delete(sessionId);
+          session.stream = null;
+          if (!session.isManualDisconnect) {
+            handleReconnect(sessionId, webContents);
+          } else {
+            activeSessions.delete(sessionId);
+            webContents.send(`ssh:status:${sessionId}`, 'disconnected');
+          }
         });
 
         resolve({ success: true, sessionId });
       });
     }).on('error', (err) => {
-      reject(err);
+      console.error(`SSH Error [${sessionId}]:`, err.message);
+      if (session.reconnectAttempts === 0) {
+        reject(err);
+      } else {
+        handleReconnect(sessionId, webContents);
+      }
     });
 
     const connectConfig: import('ssh2').ConnectConfig = {
@@ -60,8 +94,6 @@ export async function connectToServer(serverId: number, sessionId: string, webCo
       } catch (err) {
         return reject(new Error(`Failed to read private key from ${server.private_key_path}`));
       }
-    } else {
-      return reject(new Error("Invalid authentication configuration"));
     }
 
     try {
@@ -70,6 +102,32 @@ export async function connectToServer(serverId: number, sessionId: string, webCo
       reject(err);
     }
   });
+}
+
+function handleReconnect(sessionId: string, webContents: WebContents) {
+  const session = activeSessions.get(sessionId);
+  if (!session || session.isManualDisconnect) return;
+
+  session.reconnectAttempts++;
+  webContents.send(`ssh:status:${sessionId}`, 'reconnecting');
+
+  const server = getServer(session.serverId) as any;
+  const delay = Math.min(1000 * Math.pow(2, session.reconnectAttempts), 30000); // Exponential backoff up to 30s
+
+  console.log(`Attempting reconnect for ${sessionId} in ${delay}ms (Attempt ${session.reconnectAttempts})`);
+  
+  setTimeout(async () => {
+    try {
+      // Re-create client instance for clean state
+      session.client.removeAllListeners();
+      session.client.end();
+      session.client = new Client();
+      await performConnection(session, sessionId, server, webContents);
+    } catch (err) {
+      console.error(`Reconnect attempt ${session.reconnectAttempts} failed for ${sessionId}`);
+      // performConnection will trigger another handleReconnect on error
+    }
+  }, delay);
 }
 
 export function writeToStream(sessionId: string, data: string) {
@@ -82,13 +140,14 @@ export function writeToStream(sessionId: string, data: string) {
 export function resizeStream(sessionId: string, cols: number, rows: number) {
   const session = activeSessions.get(sessionId);
   if (session && session.stream) {
-    session.stream.setWindow(rows, cols, 0, 0); // Note: ssh2 setWindow is rows, cols, height, width
+    session.stream.setWindow(rows, cols, 0, 0);
   }
 }
 
 export function disconnectSession(sessionId: string) {
   const session = activeSessions.get(sessionId);
   if (session) {
+    session.isManualDisconnect = true;
     session.client.end();
     activeSessions.delete(sessionId);
   }
