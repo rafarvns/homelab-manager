@@ -1,0 +1,14 @@
+appId: com.livresolucoes.homelab-manager
+productName: Homelab Manager
+npmRebuild: false
+directories:
+  output: dist-electron
+win:
+  target: [nsis, portable]
+  icon: build/icon.ico
+mac:
+  target: [dmg]
+  icon: build/icon.icns
+linux:
+  target: [AppImage, deb]
+  icon: build/icon.png
