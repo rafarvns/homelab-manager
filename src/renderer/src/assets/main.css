@@ -1497,3 +1497,53 @@ input:checked + .slider:before {
   opacity: 0.6;
   font-size: 0.8rem;
 }
+
+/* Sysinfo Dashboard */
+.sysinfo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.sysinfo-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  transition: all 0.2s;
+}
+
+.sysinfo-card:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.sysinfo-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sysinfo-header h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.sysinfo-value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.spin-slow {
+  animation: spin 3s linear infinite;
+}

@@ -103,7 +103,7 @@ export class SFTPProvider implements SyncProvider {
     for (const part of parts) {
       current += (current === '/' || current === '' ? '' : '/') + part;
       await new Promise<void>((resolve) => {
-        sftp.mkdir(current, (err: any) => {
+        sftp.mkdir(current, () => {
           resolve();
         });
       });

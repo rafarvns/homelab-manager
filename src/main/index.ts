@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
 import { connectToServer, writeToStream, resizeStream, disconnectSession } from './ssh/ssh-manager'
+import { getSystemInfo } from './ssh/sysinfo-manager'
 import { listDirectory, readFile, writeFile, downloadFile, createDirectory, deleteItem, uploadFile, createFile } from './ssh/sftp-manager'
 import { getAllServers, createServer, updateServer, deleteServer, updateServersOrder } from './handlers/server.handlers'
 import { initDb, getDb } from './db/database'
@@ -134,6 +135,7 @@ app.whenReady().then(() => {
   ipcMain.handle('ssh:connect', async (event, serverId, sessionId) => {
     return await connectToServer(serverId, sessionId, event.sender);
   });
+  ipcMain.handle('server:sysinfo', (_, serverId) => getSystemInfo(serverId));
   ipcMain.on('ssh:input', (_, sessionId, data) => writeToStream(sessionId, data));
   ipcMain.on('ssh:resize', (_, sessionId, cols, rows) => resizeStream(sessionId, cols, rows));
   ipcMain.on('ssh:disconnect', (_, sessionId) => disconnectSession(sessionId));

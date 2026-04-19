@@ -70,9 +70,10 @@ declare global {
       serverCreate: (serverInput: ServerInput) => Promise<Server>;
       serverUpdate: (id: number, serverInput: ServerInput) => Promise<Server>;
       serverDelete: (id: number) => Promise<void>;
-      serverUpdateOrder: (ids: number[]) => Promise<{ success: boolean }>;
+      serverUpdateOrder: (ids: number[]) => Promise<void>;
       dialogOpenFile: () => Promise<string | null>;
       dialogOpenFiles: () => Promise<string[] | null>;
+      serverSysInfo: (serverId: number) => Promise<{os: string, uptime: string, cpu: string, memory: string, disk: string, ip: string, load: string, users: string, temp: string}>;
       sshConnect: (serverId: number, sessionId: string) => Promise<{success: boolean, sessionId: string}>;
       sshInput: (sessionId: string, data: string) => void;
       sshResize: (sessionId: string, cols: number, rows: number) => void;

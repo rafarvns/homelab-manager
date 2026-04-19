@@ -151,7 +151,7 @@ export async function createDirectory(serverId: number, path: string) {
 export async function deleteItem(serverId: number, path: string, isDir: boolean) {
   const { client, sftp } = await getSftpClient(serverId);
   return new Promise((resolve, reject) => {
-    const callback = (err?: Error) => {
+    const callback = (err: Error | null | undefined) => {
       client.end();
       if (err) return reject(err);
       resolve({ success: true });

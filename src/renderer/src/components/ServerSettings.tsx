@@ -1,8 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { 
   Settings, LayoutDashboard, Server, Shield, HardDrive, 
-  AlertCircle 
+  AlertCircle, Activity, Cpu, Clock, Globe, BarChart3, Users, Thermometer
 } from 'lucide-react';
 import { useAppStore, Server as ServerType } from '../store';
 import { ServerInput } from './ServerForm';
@@ -39,8 +39,29 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
   });
 
   const { fetchServers, switchServerContext } = useAppStore();
+  const [sysInfo, setSysInfo] = useState<any>(null);
+  const [sysInfoLoading, setSysInfoLoading] = useState(false);
+  const [sysInfoError, setSysInfoError] = useState('');
 
+  useEffect(() => {
+    if (isActive && !isHidden && activeTab === 'dashboard') {
+      loadSysInfo();
+    }
+  }, [isActive, isHidden, activeTab, server.id]);
 
+  const loadSysInfo = async () => {
+    setSysInfoLoading(true);
+    setSysInfoError('');
+    try {
+      const data = await window.api.serverSysInfo(server.id);
+      setSysInfo(data);
+    } catch (err: any) {
+      console.error('Failed to load sysinfo', err);
+      setSysInfoError(err.message || 'Failed to connect and fetch data');
+    } finally {
+      setSysInfoLoading(false);
+    }
+  };
 
   const handleDelete = async () => {
     try {
@@ -88,11 +109,91 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
           {activeTab === 'dashboard' && (
             <div className="settings-section">
               <h2>Dashboard</h2>
-              <div className="placeholder-card">
-                <LayoutDashboard size={48} />
-                <p>System metrics and health overview for <strong>{server.name}</strong> will appear here.</p>
-                <span className="badge">Coming Soon</span>
-              </div>
+              
+              {sysInfoLoading && !sysInfo ? (
+                <div className="placeholder-card">
+                  <Activity size={48} className="spin-slow" />
+                  <p>Connecting in background and fetching metrics for <strong>{server.name}</strong>...</p>
+                </div>
+              ) : sysInfoError ? (
+                <div className="placeholder-card" style={{ borderColor: 'var(--danger-color)' }}>
+                  <AlertCircle size={48} color="var(--danger-color)" />
+                  <p>Failed to connect: {sysInfoError}</p>
+                  <button className="btn btn-secondary" onClick={loadSysInfo} style={{ marginTop: '1rem' }}>Retry</button>
+                </div>
+              ) : sysInfo ? (
+                <div className="sysinfo-grid">
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <Settings size={20} color="var(--accent-color)" />
+                      <h3>Operating System</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.os}</div>
+                  </div>
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <Clock size={20} color="var(--success-color)" />
+                      <h3>Uptime</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.uptime}</div>
+                  </div>
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <Cpu size={20} color="#d2a8ff" />
+                      <h3>CPU</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.cpu || 'Unknown'}</div>
+                  </div>
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <Activity size={20} color="#ff7b72" />
+                      <h3>Memory</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.memory || 'Unknown'}</div>
+                  </div>
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <HardDrive size={20} color="#a5d6ff" />
+                      <h3>Disk Space (/)</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.disk || 'Unknown'}</div>
+                  </div>
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <Globe size={20} color="#7ee787" />
+                      <h3>Local IP</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.ip || 'Unknown'}</div>
+                  </div>
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <BarChart3 size={20} color="#f2cc60" />
+                      <h3>Load Average</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.load || 'Unknown'}</div>
+                  </div>
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <Users size={20} color="#d2a8ff" />
+                      <h3>Active Users</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.users || '0'}</div>
+                  </div>
+                  <div className="sysinfo-card">
+                    <div className="sysinfo-header">
+                      <Thermometer size={20} color="#ff7b72" />
+                      <h3>CPU Temp</h3>
+                    </div>
+                    <div className="sysinfo-value">{sysInfo.temp || 'N/A'}</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="placeholder-card">
+                  <LayoutDashboard size={48} />
+                  <p>System metrics and health overview for <strong>{server.name}</strong>.</p>
+                  <button className="btn btn-primary" onClick={loadSysInfo} style={{ marginTop: '1rem' }}>Connect & Fetch Stats</button>
+                </div>
+              )}
             </div>
           )}
 

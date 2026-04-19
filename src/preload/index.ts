@@ -12,6 +12,7 @@ const api = {
   serverUpdateOrder: (ids: number[]) => ipcRenderer.invoke('server:update-order', ids),
   dialogOpenFile: () => ipcRenderer.invoke('dialog:openFile'),
   dialogOpenFiles: () => ipcRenderer.invoke('dialog:openFiles'),
+  serverSysInfo: (serverId: number) => ipcRenderer.invoke('server:sysinfo', serverId),
   sshConnect: (serverId: number, sessionId: string) => ipcRenderer.invoke('ssh:connect', serverId, sessionId),
   sshInput: (sessionId: string, data: string) => ipcRenderer.send('ssh:input', sessionId, data),
   sshResize: (sessionId: string, cols: number, rows: number) => ipcRenderer.send('ssh:resize', sessionId, cols, rows),
