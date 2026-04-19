@@ -18,6 +18,7 @@ interface Session {
   serverId: number;
   type: 'terminal' | 'settings';
   status: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
+  name?: string;
 }
 
 interface AppState {
@@ -53,6 +54,7 @@ interface AppState {
   setActiveSession: (sessionId: string) => void;
   switchServerContext: (serverId: number) => void;
   updateSessionStatus: (sessionId: string, status: Session['status']) => void;
+  updateSessionName: (sessionId: string, name: string) => void;
   reorderServers: (activeId: number, overId: number) => Promise<void>;
   reorderSessions: (activeId: string, overId: string) => void;
 }
@@ -229,6 +231,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   updateSessionStatus: (sessionId: string, status: Session['status']) => {
     set((state) => ({
       sessions: state.sessions.map(s => s.id === sessionId ? { ...s, status } : s)
+    }));
+  },
+  
+  updateSessionName: (sessionId: string, name: string) => {
+    set((state) => ({
+      sessions: state.sessions.map(s => s.id === sessionId ? { ...s, name } : s)
     }));
   },
   

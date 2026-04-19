@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import * as LucideIcons from 'lucide-react'
 import { Plus, Terminal, X, ChevronLeft, ChevronRight, Settings } from 'lucide-react'
 import { useAppStore } from './store'
@@ -90,6 +90,10 @@ const SortableServerItem = ({ server, isActive, isSidebarCollapsed, onSelect, on
 };
 
 const SortableTabItem = ({ session, servers, activeSessionId, onSelect, onClose }: any) => {
+  const { updateSessionName } = useAppStore();
+  const [isEditing, setIsEditing] = useState(false);
+  const [tempName, setTempName] = useState(session.name || '');
+  
   const {
     attributes,
     listeners,
@@ -97,7 +101,7 @@ const SortableTabItem = ({ session, servers, activeSessionId, onSelect, onClose 
     transform,
     transition,
     isDragging
-  } = useSortable({ id: session.id });
+  } = useSortable({ id: session.id, disabled: isEditing });
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -118,29 +122,74 @@ const SortableTabItem = ({ session, servers, activeSessionId, onSelect, onClose 
     }
   };
 
+  const handleSave = () => {
+    if (tempName.trim()) {
+      updateSessionName(session.id, tempName.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSave();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+      setTempName(session.name || server?.name || 'Session');
+    }
+  };
+
   return (
     <div 
       ref={setNodeRef}
       style={style}
-      className={`tab ${activeSessionId === session.id ? 'active' : ''} ${isDragging ? 'dragging' : ''}`}
-      onClick={() => onSelect(session.id)}
+      className={`tab ${activeSessionId === session.id ? 'active' : ''} ${isDragging ? 'dragging' : ''} ${isEditing ? 'editing' : ''}`}
+      onClick={() => !isEditing && onSelect(session.id)}
+      onDoubleClick={() => {
+        if (session.type !== 'settings') {
+          setIsEditing(true);
+          setTempName(session.name || server?.name || 'Session');
+        }
+      }}
       {...attributes}
-      {...listeners}
+      {...(!isEditing ? listeners : {})}
     >
-      <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
         <span style={{ 
-          display: 'inline-block', width: 8, height: 8, borderRadius: '50%', 
+          display: 'inline-block', width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
           background: getStatusColor(session.status)
         }} className={session.status === 'reconnecting' ? 'reconnecting-pulse' : ''}></span>
-        {session.type === 'settings' ? 'Settings' : `${server?.name || 'Session'}`}
-      </span>
-      <button 
-        className="tab-close" 
-        onClick={(e) => { e.stopPropagation(); onClose(session.id); }}
-        onMouseDown={(e) => e.stopPropagation()} // Prevent drag when clicking close
-      >
-        <X size={14} />
-      </button>
+        
+        {isEditing ? (
+          <input 
+            autoFocus
+            className="tab-rename-input"
+            value={tempName}
+            onChange={(e) => setTempName(e.target.value)}
+            onBlur={handleSave}
+            onKeyDown={handleKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        ) : (
+          <span style={{ 
+            whiteSpace: 'nowrap', 
+            overflow: 'hidden', 
+            textOverflow: 'ellipsis',
+            fontSize: '0.85rem'
+          }}>
+            {session.type === 'settings' ? 'Settings' : (session.name || server?.name || 'Session')}
+          </span>
+        )}
+      </div>
+      {!isEditing && (
+        <button 
+          className="tab-close" 
+          onClick={(e) => { e.stopPropagation(); onClose(session.id); }}
+          onMouseDown={(e) => e.stopPropagation()} 
+        >
+          <X size={14} />
+        </button>
+      )}
     </div>
   );
 };
@@ -250,7 +299,7 @@ function App() {
         {/* App Settings View */}
         <div 
           className="main-view-container animate-fade-in" 
-          style={{ display: isGlobalSettingsOpen ? 'block' : 'none', height: '100%' }}
+          style={{ display: isGlobalSettingsOpen ? 'flex' : 'none' }}
         >
           <AppSettings />
         </div>
