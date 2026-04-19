@@ -65,9 +65,16 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
     xtermRef.current = term
     fitAddonRef.current = fitAddon
 
-    // Right-click to Paste logic
+    // Bulletproof Paste Logic
+    let lastPaste = 0;
     const handleContextMenu = async (e: MouseEvent) => {
       e.preventDefault();
+      e.stopImmediatePropagation();
+
+      const now = Date.now();
+      if (now - lastPaste < 200) return; // Debounce 200ms
+      lastPaste = now;
+
       try {
         const text = await navigator.clipboard.readText();
         if (text) {
@@ -78,7 +85,8 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
       }
     };
 
-    terminalRef.current.addEventListener('contextmenu', handleContextMenu);
+    const terminalEl = terminalRef.current;
+    terminalEl?.addEventListener('contextmenu', handleContextMenu, true); // Use capture phase
 
     // Copy on Select
     term.onSelectionChange(() => {
@@ -124,7 +132,7 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
 
     return () => {
       window.removeEventListener('resize', handleResize)
-      terminalRef.current?.removeEventListener('contextmenu', handleContextMenu)
+      terminalEl?.removeEventListener('contextmenu', handleContextMenu, true)
       window.api.removeSshListeners(sessionId)
       term.dispose()
     }
