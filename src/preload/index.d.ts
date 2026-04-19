@@ -32,6 +32,19 @@ export interface DockerContainer {
   ports: string;
 }
 
+export interface UfwRule {
+  id: string;
+  to: string;
+  action: string;
+  from: string;
+}
+
+export interface UfwStatus {
+  status: 'active' | 'inactive' | 'unknown' | 'error';
+  rules: UfwRule[];
+  message?: string;
+}
+
 export interface Server extends ServerInput {
   id: number;
   created_at: string;
@@ -97,6 +110,8 @@ declare global {
       dockerList: (serverId: number) => Promise<DockerContainer[]>;
       dockerControl: (serverId: number, containerId: string, action: 'start' | 'stop' | 'restart' | 'rm -f') => Promise<{ success: boolean; message: string }>;
       dockerLogs: (serverId: number, containerId: string, lines?: number) => Promise<string>;
+      firewallStatus: (serverId: number) => Promise<UfwStatus>;
+      firewallControl: (serverId: number, action: 'enable' | 'disable' | 'allow' | 'deny' | 'delete', params?: any) => Promise<{ success: boolean; message: string }>;
       sshConnect: (serverId: number, sessionId: string) => Promise<{success: boolean, sessionId: string}>;
       sshInput: (sessionId: string, data: string) => void;
       sshResize: (sessionId: string, cols: number, rows: number) => void;

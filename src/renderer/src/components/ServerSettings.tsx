@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useAppStore, Server as ServerType } from '../store';
 import { ServerInput } from './ServerForm';
-import { SystemService, DockerContainer } from '../../../preload/index.d';
+import { SystemService, DockerContainer, UfwStatus } from '../../../preload/index.d';
 
 const AVAILABLE_ICONS = [
   'Server', 'Terminal', 'Database', 'Globe', 'Cpu', 
@@ -68,6 +68,14 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
   const [containerActionError, setContainerActionError] = useState<string | null>(null);
   const [deleteContainerConfirm, setDeleteContainerConfirm] = useState<string | null>(null);
 
+  const [firewallStatus, setFirewallStatus] = useState<UfwStatus | null>(null);
+  const [firewallLoading, setFirewallLoading] = useState(false);
+  const [firewallActionLoading, setFirewallActionLoading] = useState<string | null>(null);
+  const [firewallActionError, setFirewallActionError] = useState<string | null>(null);
+  const [showAddRuleModal, setShowAddRuleModal] = useState(false);
+  const [ruleFormData, setRuleFormData] = useState({ port: '', protocol: 'any', action: 'allow' });
+  const [deleteRuleConfirm, setDeleteRuleConfirm] = useState<string | null>(null);
+
   useEffect(() => {
     setFormData({
       name: server.name,
@@ -88,6 +96,7 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
       if (activeTab === 'dashboard') loadSysInfo();
       if (activeTab === 'services') loadServices();
       if (activeTab === 'docker') loadContainers();
+      if (activeTab === 'firewall') loadFirewall();
     }
   }, [isActive, isHidden, activeTab, server.id]);
 
@@ -279,6 +288,41 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
     });
     return counts;
   }, [containers]);
+
+  const loadFirewall = async () => {
+    setFirewallLoading(true);
+    try {
+      const data = await window.api.firewallStatus(server.id);
+      setFirewallStatus(data);
+    } catch (err: any) {
+      console.error('Failed to load firewall status', err);
+      // The backend returns an error object on 'command not found', 
+      // but in case it throws an actual IPC error:
+      setFirewallStatus({ status: 'error', rules: [], message: err.message });
+    } finally {
+      setFirewallLoading(false);
+    }
+  };
+
+  const handleFirewallAction = async (action: 'enable' | 'disable' | 'allow' | 'deny' | 'delete', params?: any) => {
+    setFirewallActionLoading(action);
+    setFirewallActionError(null);
+    try {
+      await window.api.firewallControl(server.id, action, params);
+      await loadFirewall();
+      if (action === 'allow' || action === 'deny') {
+        setShowAddRuleModal(false);
+        setRuleFormData({ port: '', protocol: 'any', action: 'allow' });
+      }
+      if (action === 'delete') setDeleteRuleConfirm(null);
+    } catch (err: any) {
+      console.error(`Failed to ${action} firewall rule`, err);
+      setFirewallActionError(`Failed to ${action}: ${err.message}`);
+      setTimeout(() => setFirewallActionError(null), 5000);
+    } finally {
+      setFirewallActionLoading(null);
+    }
+  };
 
   const tabs: { id: SettingsTab; label: string; icon: any }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -888,13 +932,173 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
           )}
 
           {activeTab === 'firewall' && (
-            <div className="settings-section">
-              <h2>Firewall</h2>
-              <div className="placeholder-card">
-                <Shield size={48} />
-                <p>Configure UFW or Iptables rules for <strong>{server.name}</strong>.</p>
-                <span className="badge">Coming Soon</span>
+            <div className="settings-section services-tab">
+              <div className="services-top-bar">
+                <div className="services-top-bar-left">
+                  <h2>Firewall (UFW)</h2>
+                  <span className="services-subtitle">
+                    Status: <strong className={firewallStatus?.status === 'active' ? 'ok' : firewallStatus?.status === 'error' ? 'error' : ''}>{firewallStatus?.status || 'Unknown'}</strong>
+                  </span>
+                </div>
+                <div className="services-top-bar-right">
+                  {firewallStatus?.status === 'active' && (
+                    <button className="btn btn-primary" onClick={() => setShowAddRuleModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }}>
+                      <Shield size={14} /> Add Rule
+                    </button>
+                  )}
+                  {firewallStatus?.status === 'active' ? (
+                    <button className="btn btn-danger-outline" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }} onClick={() => handleFirewallAction('disable')} disabled={!!firewallActionLoading}>
+                      <Shield size={14} /> Disable UFW
+                    </button>
+                  ) : firewallStatus?.status === 'inactive' ? (
+                    <button className="btn btn-primary" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }} onClick={() => handleFirewallAction('enable')} disabled={!!firewallActionLoading}>
+                      <Shield size={14} /> Enable UFW
+                    </button>
+                  ) : null}
+                  <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }} onClick={() => loadFirewall()} title="Refresh List">
+                    <RefreshCcw size={14} className={firewallLoading ? 'spin' : ''} />
+                    <span style={{ fontSize: '0.85rem' }}>Refresh</span>
+                  </button>
+                </div>
               </div>
+
+              {firewallActionError && (
+                <div className="services-error-toast">
+                  <AlertCircle size={14} />
+                  <span>{firewallActionError}</span>
+                  <button onClick={() => setFirewallActionError(null)}><X size={14} /></button>
+                </div>
+              )}
+
+              {firewallLoading && (!firewallStatus || firewallStatus.status === 'unknown') ? (
+                <div className="placeholder-card">
+                  <Activity size={48} className="spin-slow" />
+                  <p>Fetching UFW status...</p>
+                </div>
+              ) : firewallStatus?.status === 'error' ? (
+                <div className="placeholder-card error">
+                  <AlertCircle size={48} color="var(--danger-color)" />
+                  <p>{firewallStatus.message || 'Failed to detect UFW.'}</p>
+                  <button className="btn btn-secondary" onClick={() => loadFirewall()}>Retry</button>
+                </div>
+              ) : firewallStatus?.status === 'inactive' ? (
+                <div className="placeholder-card">
+                  <Shield size={48} color="var(--text-secondary)" />
+                  <p>UFW corresponds to the Uncomplicated Firewall and is currently <strong>inactive</strong>.</p>
+                  <button className="btn btn-primary" onClick={() => handleFirewallAction('enable')} style={{ marginTop: '1rem' }}>Enable Firewall</button>
+                </div>
+              ) : firewallStatus?.status === 'active' ? (
+                <div className="services-container">
+                  
+                  <div className="services-table-wrapper">
+                    <table className="services-table">
+                      <thead>
+                        <tr>
+                          <th>ID</th>
+                          <th>To (Port/Proto)</th>
+                          <th>Action</th>
+                          <th>From</th>
+                          <th className="actions-cell">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {firewallStatus.rules.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="services-empty-row">
+                              No firewall rules configured yet.
+                            </td>
+                          </tr>
+                        ) : firewallStatus.rules.map(rule => (
+                          <tr key={rule.id}>
+                            <td>[{rule.id}]</td>
+                            <td className="service-name-cell">{rule.to}</td>
+                            <td>
+                              <span className={`status-badge ${rule.action.includes('ALLOW') ? 'running' : 'stopped'}`}>
+                                {rule.action}
+                              </span>
+                            </td>
+                            <td>{rule.from}</td>
+                            <td className="actions-cell">
+                              <div className="service-actions-inline">
+                                {deleteRuleConfirm === rule.id ? (
+                                  <div className="action-confirm-group">
+                                    <button className="action-btn" onClick={() => setDeleteRuleConfirm(null)}><X size={14} /></button>
+                                    <button 
+                                      className="action-btn"
+                                      style={{ color: 'var(--danger-color)', border: '1px solid var(--danger-color)' }}
+                                      onClick={() => handleFirewallAction('delete', { id: rule.id })}
+                                      disabled={firewallActionLoading === 'delete'}
+                                    >
+                                      <Trash2 size={14} className={firewallActionLoading === 'delete' ? 'spin' : ''} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button className="action-btn stop" onClick={() => setDeleteRuleConfirm(rule.id)} title="Delete Rule">
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ) : null}
+
+              {showAddRuleModal && (
+                <div className="modal-overlay">
+                  <div className="modal" style={{ width: '400px' }}>
+                    <div className="modal-header">
+                      <h3>Add Firewall Rule</h3>
+                      <button className="btn-icon" onClick={() => setShowAddRuleModal(false)}><X size={18} /></button>
+                    </div>
+                    <div className="form-group" style={{ marginTop: '1rem' }}>
+                      <label>Action</label>
+                      <select value={ruleFormData.action} onChange={e => setRuleFormData({...ruleFormData, action: e.target.value})}>
+                        <option value="allow">ALLOW</option>
+                        <option value="deny">DENY</option>
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label>Port</label>
+                      <input 
+                        type="text" 
+                        placeholder="e.g. 80, 443, 8080" 
+                        value={ruleFormData.port}
+                        onChange={e => setRuleFormData({...ruleFormData, port: e.target.value})}
+                        autoFocus
+                      />
+                    </div>
+                    <div className="form-group">
+                      <label>Protocol</label>
+                      <select value={ruleFormData.protocol} onChange={e => setRuleFormData({...ruleFormData, protocol: e.target.value})}>
+                        <option value="any">Any (TCP/UDP)</option>
+                        <option value="tcp">TCP</option>
+                        <option value="udp">UDP</option>
+                      </select>
+                    </div>
+                    {ruleFormData.port === '22' && ruleFormData.action === 'deny' && (
+                      <div className="danger-zone" style={{ marginTop: '1rem', padding: '0.5rem', border: '1px solid var(--danger-color)', borderRadius: '4px' }}>
+                        <p style={{ color: 'var(--danger-color)', fontSize: '0.85rem', margin: 0 }}>
+                          <strong>Warning:</strong> Denying port 22 might lock you out of SSH!
+                        </p>
+                      </div>
+                    )}
+                    <div className="modal-actions" style={{ marginTop: '1.5rem' }}>
+                      <button className="btn btn-secondary" onClick={() => setShowAddRuleModal(false)}>Cancel</button>
+                      <button 
+                        className="btn btn-primary" 
+                        disabled={!ruleFormData.port || !!firewallActionLoading}
+                        onClick={() => handleFirewallAction(ruleFormData.action as any, { port: ruleFormData.port, protocol: ruleFormData.protocol })}
+                      >
+                        {firewallActionLoading ? 'Adding...' : 'Add Rule'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
