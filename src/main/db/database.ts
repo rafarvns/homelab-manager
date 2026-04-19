@@ -91,6 +91,14 @@ function migrate() {
       value            TEXT NOT NULL,
       updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS docker_aliases (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      server_id       INTEGER NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+      container_id    TEXT NOT NULL,
+      alias           TEXT NOT NULL,
+      UNIQUE(server_id, container_id)
+    );
   `;
 
   db.exec(schema);

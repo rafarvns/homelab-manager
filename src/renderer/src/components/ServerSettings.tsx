@@ -67,6 +67,8 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
   const [containerActionLoading, setContainerActionLoading] = useState<string | null>(null);
   const [containerActionError, setContainerActionError] = useState<string | null>(null);
   const [deleteContainerConfirm, setDeleteContainerConfirm] = useState<string | null>(null);
+  const [editingContainerId, setEditingContainerId] = useState<string | null>(null);
+  const [tempAlias, setTempAlias] = useState('');
 
   const [firewallStatus, setFirewallStatus] = useState<UfwStatus | null>(null);
   const [firewallLoading, setFirewallLoading] = useState(false);
@@ -266,6 +268,34 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
       setTimeout(() => setContainerActionError(null), 5000);
     } finally {
       setLogsLoading(false);
+    }
+  };
+
+  const parseDockerPorts = (portsStr: string) => {
+    if (!portsStr) return [];
+    const hostPorts = new Set<string>();
+    const parts = portsStr.split(',').map(p => p.trim());
+    parts.forEach(part => {
+      const match = part.match(/(?:[0-9.]+|::|\[::\]):([0-9]+)->/);
+      if (match && match[1]) {
+        hostPorts.add(match[1]);
+      }
+    });
+    return Array.from(hostPorts).sort((a, b) => parseInt(a) - parseInt(b));
+  };
+
+  const handleOpenPort = (port: string) => {
+    const url = `http://${server.host}:${port}`;
+    window.api.openExternal(url);
+  };
+
+  const handleSaveAlias = async (containerId: string) => {
+    try {
+      await window.api.dockerSetAlias(server.id, containerId, tempAlias);
+      setEditingContainerId(null);
+      loadContainers();
+    } catch (err: any) {
+      console.error('Failed to set alias:', err);
     }
   };
 
@@ -798,14 +828,62 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
                           </tr>
                         ) : filteredContainers.map(c => (
                           <tr key={c.id} className={selectedContainerLogs?.name === c.id ? 'selected' : ''}>
-                            <td className="service-name-cell">{c.name}</td>
+                            <td 
+                              className="service-name-cell"
+                              onDoubleClick={() => {
+                                setEditingContainerId(c.id);
+                                setTempAlias(c.alias || '');
+                              }}
+                            >
+                              {editingContainerId === c.id ? (
+                                <input
+                                  autoFocus
+                                  className="alias-input"
+                                  value={tempAlias}
+                                  onChange={(e) => setTempAlias(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') handleSaveAlias(c.id);
+                                    if (e.key === 'Escape') setEditingContainerId(null);
+                                  }}
+                                  onBlur={() => handleSaveAlias(c.id)}
+                                  placeholder="Enter alias..."
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              ) : (
+                                <div className="name-wrapper" title={c.alias ? `Original: ${c.name}` : undefined}>
+                                  <span className={c.alias ? 'alias-text' : 'name-text'}>
+                                    {c.alias || c.name}
+                                  </span>
+                                  {c.alias && <span className="original-name-hint">({c.name})</span>}
+                                </div>
+                              )}
+                            </td>
+
                             <td>
                               <span className={`status-badge ${c.state === 'running' ? 'running' : 'stopped'}`}>
                                 {c.status}
                               </span>
                             </td>
                             <td>{c.image}</td>
-                            <td className="service-desc-cell" title={c.ports}>{c.ports || '-'}</td>
+                            <td className="service-ports-cell">
+                              <div className="port-pills">
+                                {parseDockerPorts(c.ports).length > 0 ? (
+                                  parseDockerPorts(c.ports).map(port => (
+                                    <button 
+                                      key={port} 
+                                      className="port-pill"
+                                      title={`Open http://${server.host}:${port} in browser`}
+                                      onClick={() => handleOpenPort(port)}
+                                    >
+                                      <Globe size={10} />
+                                      <span>{port}</span>
+                                    </button>
+                                  ))
+                                ) : (
+                                  <span className="no-ports">{c.ports || '-'}</span>
+                                )}
+                              </div>
+                            </td>
                             <td className="actions-cell">
                               <div className="service-actions-inline">
                                 {c.state === 'running' ? (

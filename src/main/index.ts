@@ -12,6 +12,7 @@ import { registerSettingsHandlers } from './handlers/settings.handlers'
 import { registerSyncHandlers } from './handlers/sync.handlers'
 import { listServices, controlService, getServiceLogs } from './ssh/services-manager'
 import { listDockerContainers, controlDockerContainer, getDockerLogs } from './ssh/docker-manager'
+import { setDockerAlias } from './handlers/docker.handlers'
 import { getFirewallStatus, controlFirewall } from './ssh/firewall-manager'
 
 function getWindowState() {
@@ -146,6 +147,7 @@ app.whenReady().then(() => {
   ipcMain.handle('docker:list', (_, serverId) => listDockerContainers(serverId));
   ipcMain.handle('docker:control', (_, serverId, containerId, action) => controlDockerContainer(serverId, containerId, action));
   ipcMain.handle('docker:logs', (_, serverId, containerId, lines) => getDockerLogs(serverId, containerId, lines));
+  ipcMain.handle('docker:set-alias', (_, serverId, containerId, alias) => setDockerAlias(serverId, containerId, alias));
   
   ipcMain.handle('firewall:status', (_, serverId) => getFirewallStatus(serverId));
   ipcMain.handle('firewall:control', (_, serverId, action, params) => controlFirewall(serverId, action, params));
@@ -163,6 +165,8 @@ app.whenReady().then(() => {
   ipcMain.handle('sftp:delete', (_, serverId, path, isDir) => deleteItem(serverId, path, isDir));
   ipcMain.handle('sftp:upload', (_, serverId, localPath, remotePath) => uploadFile(serverId, localPath, remotePath));
   ipcMain.handle('sftp:touch', (_, serverId, path) => createFile(serverId, path));
+
+  ipcMain.on('shell:openExternal', (_, url) => shell.openExternal(url));
 
   createWindow()
 

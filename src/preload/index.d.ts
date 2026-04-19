@@ -30,6 +30,7 @@ export interface DockerContainer {
   state: 'running' | 'exited' | 'created' | 'paused' | 'restarting' | 'dead' | 'unknown';
   status: string;
   ports: string;
+  alias?: string;
 }
 
 export interface UfwRule {
@@ -110,6 +111,7 @@ declare global {
       dockerList: (serverId: number) => Promise<DockerContainer[]>;
       dockerControl: (serverId: number, containerId: string, action: 'start' | 'stop' | 'restart' | 'rm -f') => Promise<{ success: boolean; message: string }>;
       dockerLogs: (serverId: number, containerId: string, lines?: number) => Promise<string>;
+      dockerSetAlias: (serverId: number, containerId: string, alias: string) => Promise<{ success: boolean; message: string }>;
       firewallStatus: (serverId: number) => Promise<UfwStatus>;
       firewallControl: (serverId: number, action: 'enable' | 'disable' | 'allow' | 'deny' | 'delete', params?: any) => Promise<{ success: boolean; message: string }>;
       sshConnect: (serverId: number, sessionId: string) => Promise<{success: boolean, sessionId: string}>;
@@ -150,6 +152,7 @@ declare global {
       syncSetSecurePassphrase: (passphrase: string | null) => Promise<void>;
       syncGetLocalStats: () => Promise<{ size: number }>;
       onSyncDataUpdated: (callback: () => void) => void;
+      openExternal: (url: string) => void;
     }
   }
 }

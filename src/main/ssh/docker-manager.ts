@@ -1,5 +1,6 @@
 import { Client } from 'ssh2';
 import { getServer } from '../handlers/server.handlers';
+import { getDockerAliases } from '../handlers/docker.handlers';
 import * as fs from 'fs';
 
 export interface DockerContainer {
@@ -9,6 +10,7 @@ export interface DockerContainer {
   state: 'running' | 'exited' | 'created' | 'paused' | 'restarting' | 'dead' | 'unknown';
   status: string;
   ports: string;
+  alias?: string;
 }
 
 async function getClient(serverId: number): Promise<{ client: Client, server: any }> {
@@ -87,19 +89,22 @@ export async function listDockerContainers(serverId: number): Promise<DockerCont
         }
 
         const containers: DockerContainer[] = [];
+        const aliases = getDockerAliases(serverId);
         
         output.trim().split('\n').forEach(line => {
           line = line.trim();
-          if (!line || line.includes('[sudo] password for')) return; // ignore sudo prompt lines
+          if (!line || line.includes('[sudo] password for')) return; 
           const parts = line.split('|');
           if (parts.length >= 6) {
+            const id = parts[0];
             containers.push({
-              id: parts[0],
+              id,
               name: parts[1],
               image: parts[2],
               state: parts[3].toLowerCase() as any,
               status: parts[4],
-              ports: parts[5]
+              ports: parts[5],
+              alias: aliases[id]
             });
           }
         });

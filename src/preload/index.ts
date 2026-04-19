@@ -19,6 +19,7 @@ const api = {
   dockerList: (serverId: number) => ipcRenderer.invoke('docker:list', serverId),
   dockerControl: (serverId: number, containerId: string, action: string) => ipcRenderer.invoke('docker:control', serverId, containerId, action),
   dockerLogs: (serverId: number, containerId: string, lines?: number) => ipcRenderer.invoke('docker:logs', serverId, containerId, lines),
+  dockerSetAlias: (serverId: number, containerId: string, alias: string) => ipcRenderer.invoke('docker:set-alias', serverId, containerId, alias),
   firewallStatus: (serverId: number) => ipcRenderer.invoke('firewall:status', serverId),
   firewallControl: (serverId: number, action: string, params?: any) => ipcRenderer.invoke('firewall:control', serverId, action, params),
   sshConnect: (serverId: number, sessionId: string) => ipcRenderer.invoke('ssh:connect', serverId, sessionId),
@@ -63,6 +64,7 @@ const api = {
   onSyncDataUpdated: (callback: () => void) => {
     ipcRenderer.on('sync:data-updated', () => callback());
   },
+  openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
