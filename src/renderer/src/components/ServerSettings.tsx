@@ -3,11 +3,12 @@ import * as LucideIcons from 'lucide-react';
 import { 
   Settings, LayoutDashboard, Server, Shield, HardDrive, 
   AlertCircle, Activity, Cpu, Clock, Globe, BarChart3, Users, Thermometer,
-  Search, RefreshCcw, Play, Square, RotateCw, FileSearch, X, Filter, ChevronDown
+  Search, RefreshCcw, Play, Square, RotateCw, FileSearch, X, Filter, ChevronDown,
+  Trash2, Box
 } from 'lucide-react';
 import { useAppStore, Server as ServerType } from '../store';
 import { ServerInput } from './ServerForm';
-import { SystemService } from '../../../preload/index.d';
+import { SystemService, DockerContainer } from '../../../preload/index.d';
 
 const AVAILABLE_ICONS = [
   'Server', 'Terminal', 'Database', 'Globe', 'Cpu', 
@@ -57,6 +58,16 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
   const [actionLoading, setActionLoading] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
+  const [containers, setContainers] = useState<DockerContainer[]>([]);
+  const [containersLoading, setContainersLoading] = useState(false);
+  const [containersError, setContainersError] = useState('');
+  const [containersSearch, setContainersSearch] = useState('');
+  const [dockerStatusFilter, setDockerStatusFilter] = useState<string>('all');
+  const [selectedContainerLogs, setSelectedContainerLogs] = useState<{name: string, content: string} | null>(null);
+  const [containerActionLoading, setContainerActionLoading] = useState<string | null>(null);
+  const [containerActionError, setContainerActionError] = useState<string | null>(null);
+  const [deleteContainerConfirm, setDeleteContainerConfirm] = useState<string | null>(null);
+
   useEffect(() => {
     setFormData({
       name: server.name,
@@ -76,6 +87,7 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
     if (isActive && !isHidden) {
       if (activeTab === 'dashboard') loadSysInfo();
       if (activeTab === 'services') loadServices();
+      if (activeTab === 'docker') loadContainers();
     }
   }, [isActive, isHidden, activeTab, server.id]);
 
@@ -199,10 +211,79 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
     }
   };
 
+  const loadContainers = async (silent = false) => {
+    if (!silent) setContainersLoading(true);
+    setContainersError('');
+    try {
+      const data = await window.api.dockerList(server.id);
+      setContainers(data);
+    } catch (err: any) {
+      console.error('Failed to load containers', err);
+      if (!silent) setContainersError(err.message || 'Failed to fetch docker containers');
+    } finally {
+      if (!silent) setContainersLoading(false);
+    }
+  };
+
+  const handleDockerAction = async (containerId: string, action: 'start' | 'stop' | 'restart' | 'rm -f') => {
+    setContainerActionLoading(`${containerId}-${action}`);
+    setContainerActionError(null);
+    try {
+      await window.api.dockerControl(server.id, containerId, action);
+      await loadContainers(true);
+      if (selectedContainerLogs?.name === containerId && action !== 'rm -f') {
+        handleViewDockerLogs(containerId);
+      } else if (action === 'rm -f' && selectedContainerLogs?.name === containerId) {
+        setSelectedContainerLogs(null);
+      }
+    } catch (err: any) {
+      console.error(`Failed to ${action} ${containerId}`, err);
+      setContainerActionError(`Failed to ${action} ${containerId}: ${err.message}`);
+      setTimeout(() => setContainerActionError(null), 5000);
+    } finally {
+      setContainerActionLoading(null);
+      if (action === 'rm -f') setDeleteContainerConfirm(null);
+    }
+  };
+
+  const handleViewDockerLogs = async (containerId: string) => {
+    setLogsLoading(true);
+    try {
+      const logs = await window.api.dockerLogs(server.id, containerId);
+      setSelectedContainerLogs({ name: containerId, content: logs });
+    } catch (err: any) {
+      console.error(`Failed to fetch logs for ${containerId}`, err);
+      setContainerActionError(`Failed to get logs for ${containerId}: ${err.message}`);
+      setTimeout(() => setContainerActionError(null), 5000);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const filteredContainers = useMemo(() => {
+    return containers.filter(c => {
+      const matchSearch = c.name.toLowerCase().includes(containersSearch.toLowerCase()) ||
+        c.image.toLowerCase().includes(containersSearch.toLowerCase());
+      const matchStatus = dockerStatusFilter === 'all' || 
+        (dockerStatusFilter === 'running' && c.state === 'running') ||
+        (dockerStatusFilter === 'exited' && (c.state === 'exited' || c.state === 'dead'));
+      return matchSearch && matchStatus;
+    });
+  }, [containers, containersSearch, dockerStatusFilter]);
+
+  const dockerStatusCounts = useMemo(() => {
+    const counts = { running: 0, exited: 0 };
+    containers.forEach(c => {
+      if (c.state === 'running') counts.running++;
+      else if (c.state === 'exited' || c.state === 'dead') counts.exited++;
+    });
+    return counts;
+  }, [containers]);
+
   const tabs: { id: SettingsTab; label: string; icon: any }[] = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'services', label: 'Services', icon: Server },
-    { id: 'docker', label: 'Docker', icon: HardDrive },
+    { id: 'docker', label: 'Docker', icon: Box },
     { id: 'firewall', label: 'Firewall', icon: Shield },
     { id: 'manage', label: 'Manage', icon: Settings },
   ];
@@ -571,13 +652,238 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
           )}
 
           {activeTab === 'docker' && (
-            <div className="settings-section">
-              <h2>Docker</h2>
-              <div className="placeholder-card">
-                <HardDrive size={48} />
-                <p>View containers, images, and volumes running on this host.</p>
-                <span className="badge">Coming Soon</span>
+            <div className="settings-section services-tab">
+              <div className="services-top-bar">
+                <div className="services-top-bar-left">
+                  <h2>Docker Containers</h2>
+                  <span className="services-subtitle">running on <strong>{server.name}</strong></span>
+                </div>
+                <div className="services-top-bar-right">
+                  <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }} onClick={() => loadContainers(true)} title="Refresh List">
+                    <RefreshCcw size={14} className={containersLoading ? 'spin' : ''} />
+                    <span style={{ fontSize: '0.85rem' }}>Refresh List</span>
+                  </button>
+                </div>
               </div>
+
+              {/* Summary counters */}
+              {containers.length > 0 && (
+                <div className="services-summary">
+                  <button 
+                    className={`summary-chip ${dockerStatusFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setDockerStatusFilter('all')}
+                  >
+                    <span className="chip-count">{containers.length}</span>
+                    <span>Total</span>
+                  </button>
+                  <button 
+                    className={`summary-chip running ${dockerStatusFilter === 'running' ? 'active' : ''}`}
+                    onClick={() => setDockerStatusFilter(dockerStatusFilter === 'running' ? 'all' : 'running')}
+                  >
+                    <span className="chip-dot running"></span>
+                    <span className="chip-count">{dockerStatusCounts.running}</span>
+                    <span>Running</span>
+                  </button>
+                  <button 
+                    className={`summary-chip stopped ${dockerStatusFilter === 'exited' ? 'active' : ''}`}
+                    onClick={() => setDockerStatusFilter(dockerStatusFilter === 'exited' ? 'all' : 'exited')}
+                  >
+                    <span className="chip-dot stopped"></span>
+                    <span className="chip-count">{dockerStatusCounts.exited}</span>
+                    <span>Exited</span>
+                  </button>
+                </div>
+              )}
+
+              {/* Toolbar with search */}
+              <div className="services-toolbar">
+                <div className="search-box">
+                  <Search size={16} />
+                  <input 
+                    placeholder="Search containers..." 
+                    value={containersSearch}
+                    onChange={e => setContainersSearch(e.target.value)}
+                  />
+                  {containersSearch && (
+                    <button className="search-clear" onClick={() => setContainersSearch('')}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Error toast */}
+              {containerActionError && (
+                <div className="services-error-toast">
+                  <AlertCircle size={14} />
+                  <span>{containerActionError}</span>
+                  <button onClick={() => setContainerActionError(null)}><X size={14} /></button>
+                </div>
+              )}
+
+              {containersLoading && containers.length === 0 ? (
+                <div className="placeholder-card">
+                  <Activity size={48} className="spin-slow" />
+                  <p>Fetching docker containers...</p>
+                </div>
+              ) : containersError ? (
+                <div className="placeholder-card error">
+                  <AlertCircle size={48} color="var(--danger-color)" />
+                  <p>{containersError}</p>
+                  <button className="btn btn-secondary" onClick={() => loadContainers()}>Retry</button>
+                </div>
+              ) : (
+                <div className="services-container">
+                  <div className="services-table-wrapper">
+                    <table className="services-table">
+                      <thead>
+                        <tr>
+                          <th>Name</th>
+                          <th>Status</th>
+                          <th>Image</th>
+                          <th>Ports</th>
+                          <th className="actions-cell">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredContainers.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="services-empty-row">
+                              No containers match your search.
+                            </td>
+                          </tr>
+                        ) : filteredContainers.map(c => (
+                          <tr key={c.id} className={selectedContainerLogs?.name === c.id ? 'selected' : ''}>
+                            <td className="service-name-cell">{c.name}</td>
+                            <td>
+                              <span className={`status-badge ${c.state === 'running' ? 'running' : 'stopped'}`}>
+                                {c.status}
+                              </span>
+                            </td>
+                            <td>{c.image}</td>
+                            <td className="service-desc-cell" title={c.ports}>{c.ports || '-'}</td>
+                            <td className="actions-cell">
+                              <div className="service-actions-inline">
+                                {c.state === 'running' ? (
+                                  <button 
+                                    className="action-btn stop" 
+                                    title="Stop Container"
+                                    onClick={() => handleDockerAction(c.id, 'stop')}
+                                    disabled={containerActionLoading === `${c.id}-stop`}
+                                  >
+                                    <Square size={14} />
+                                  </button>
+                                ) : (
+                                  <button 
+                                    className="action-btn start" 
+                                    title="Start Container"
+                                    onClick={() => handleDockerAction(c.id, 'start')}
+                                    disabled={containerActionLoading === `${c.id}-start`}
+                                  >
+                                    <Play size={14} />
+                                  </button>
+                                )}
+                                <button 
+                                  className="action-btn restart" 
+                                  title="Restart Container"
+                                  onClick={() => handleDockerAction(c.id, 'restart')}
+                                  disabled={containerActionLoading === `${c.id}-restart`}
+                                >
+                                  <RotateCw size={14} className={containerActionLoading === `${c.id}-restart` ? 'spin' : ''} />
+                                </button>
+                                <button 
+                                  className={`action-btn logs ${selectedContainerLogs?.name === c.id ? 'active' : ''}`} 
+                                  title="View Logs"
+                                  onClick={() => handleViewDockerLogs(c.id)}
+                                >
+                                  <FileSearch size={14} />
+                                </button>
+                                {deleteContainerConfirm === c.id ? (
+                                  <div className="action-confirm-group">
+                                    <button 
+                                      className="action-btn restart" 
+                                      title="Cancel"
+                                      onClick={() => setDeleteContainerConfirm(null)}
+                                    >
+                                      <X size={14} />
+                                    </button>
+                                    <button 
+                                      className="action-btn"
+                                      style={{ color: 'var(--danger-color)', border: '1px solid var(--danger-color)', background: 'rgba(248, 81, 73, 0.1)' }}
+                                      title="Confirm Delete"
+                                      onClick={() => handleDockerAction(c.id, 'rm -f')}
+                                      disabled={containerActionLoading === `${c.id}-rm -f`}
+                                    >
+                                      <Trash2 size={14} className={containerActionLoading === `${c.id}-rm -f` ? 'spin' : ''} />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button 
+                                    className="action-btn stop" 
+                                    title="Force Remove"
+                                    onClick={() => setDeleteContainerConfirm(c.id)}
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {selectedContainerLogs && (
+                    <div className="logs-drawer">
+                      <div className="logs-header">
+                        <div className="logs-header-title">
+                          <FileSearch size={16} />
+                          <span>Container Logs: <strong>{selectedContainerLogs.name}</strong></span>
+                        </div>
+                        <div className="logs-actions">
+                          <button 
+                            className="action-btn" 
+                            onClick={() => handleViewDockerLogs(selectedContainerLogs.name)} 
+                            title="Refresh Logs"
+                            disabled={logsLoading}
+                          >
+                            <RefreshCcw size={14} className={logsLoading ? 'spin' : ''} />
+                          </button>
+                          <button className="action-btn" onClick={() => setSelectedContainerLogs(null)} title="Close Logs">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="logs-content">
+                        {logsLoading ? (
+                          <div className="logs-loading">
+                            <Activity size={32} className="spin" color="var(--accent-color)" />
+                            <p>Tailing docker logs...</p>
+                          </div>
+                        ) : (
+                          <pre>{selectedContainerLogs.content || 'No log entries found for this container.'}</pre>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Footer status bar */}
+              {containers.length > 0 && (
+                <div className="services-status-bar">
+                  <span>{filteredContainers.length} of {containers.length} containers shown</span>
+                  {(dockerStatusFilter !== 'all' || containersSearch) && (
+                    <button className="clear-filters-btn" onClick={() => {
+                      setDockerStatusFilter('all');
+                      setContainersSearch('');
+                    }}>
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

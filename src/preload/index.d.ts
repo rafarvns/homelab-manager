@@ -23,6 +23,15 @@ export interface SystemService {
   description: string;
 }
 
+export interface DockerContainer {
+  id: string;
+  name: string;
+  image: string;
+  state: 'running' | 'exited' | 'created' | 'paused' | 'restarting' | 'dead' | 'unknown';
+  status: string;
+  ports: string;
+}
+
 export interface Server extends ServerInput {
   id: number;
   created_at: string;
@@ -85,6 +94,9 @@ declare global {
       servicesList: (serverId: number) => Promise<SystemService[]>;
       servicesControl: (serverId: number, name: string, action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') => Promise<{ success: boolean; message: string }>;
       servicesLogs: (serverId: number, name: string, lines?: number) => Promise<string>;
+      dockerList: (serverId: number) => Promise<DockerContainer[]>;
+      dockerControl: (serverId: number, containerId: string, action: 'start' | 'stop' | 'restart' | 'rm -f') => Promise<{ success: boolean; message: string }>;
+      dockerLogs: (serverId: number, containerId: string, lines?: number) => Promise<string>;
       sshConnect: (serverId: number, sessionId: string) => Promise<{success: boolean, sessionId: string}>;
       sshInput: (sessionId: string, data: string) => void;
       sshResize: (sessionId: string, cols: number, rows: number) => void;

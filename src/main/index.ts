@@ -11,6 +11,7 @@ import { initDb, getDb } from './db/database'
 import { registerSettingsHandlers } from './handlers/settings.handlers'
 import { registerSyncHandlers } from './handlers/sync.handlers'
 import { listServices, controlService, getServiceLogs } from './ssh/services-manager'
+import { listDockerContainers, controlDockerContainer, getDockerLogs } from './ssh/docker-manager'
 
 function getWindowState() {
   try {
@@ -141,6 +142,9 @@ app.whenReady().then(() => {
   ipcMain.handle('services:control', (_, serverId, serviceName, action) => controlService(serverId, serviceName, action));
   ipcMain.handle('services:logs', (_, serverId, serviceName, lines) => getServiceLogs(serverId, serviceName, lines));
   
+  ipcMain.handle('docker:list', (_, serverId) => listDockerContainers(serverId));
+  ipcMain.handle('docker:control', (_, serverId, containerId, action) => controlDockerContainer(serverId, containerId, action));
+  ipcMain.handle('docker:logs', (_, serverId, containerId, lines) => getDockerLogs(serverId, containerId, lines));
   ipcMain.on('ssh:input', (_, sessionId, data) => writeToStream(sessionId, data));
   ipcMain.on('ssh:resize', (_, sessionId, cols, rows) => resizeStream(sessionId, cols, rows));
   ipcMain.on('ssh:disconnect', (_, sessionId) => disconnectSession(sessionId));
