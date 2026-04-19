@@ -76,8 +76,17 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
       lastPaste = now;
 
       try {
-        const text = await navigator.clipboard.readText();
+        let text = await navigator.clipboard.readText();
         if (text) {
+          // Normalize all newlines (\r\n or \n) to just \r
+          // This prevents the "double enter" effect where SSH sees \r and \n as two separate commands
+          text = text.replace(/\r\n/g, '\r').replace(/\n/g, '\r');
+          
+          // Ensure we don't send multiple trailing newlines
+          if (text.endsWith('\r')) {
+            text = text.trimEnd() + '\r';
+          }
+          
           window.api.sshInput(sessionId, text);
         }
       } catch (err) {
@@ -85,8 +94,15 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
       }
     };
 
+    const handleNativePaste = (e: ClipboardEvent) => {
+      // Block all native paste attempts to avoid duplication with our custom logic
+      e.preventDefault();
+      e.stopImmediatePropagation();
+    };
+
     const terminalEl = terminalRef.current;
-    terminalEl?.addEventListener('contextmenu', handleContextMenu, true); // Use capture phase
+    terminalEl?.addEventListener('contextmenu', handleContextMenu, true);
+    terminalEl?.addEventListener('paste', handleNativePaste as any, true);
 
     // Copy on Select
     term.onSelectionChange(() => {
@@ -124,7 +140,7 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
       if (status === 'disconnected') {
         term.write('\r\n\x1b[31;1m[Session Disconnected]\x1b[0m\r\n')
       } else if (status === 'reconnecting') {
-        term.write('\r\n\x1b[33;1m[Connection lost. Reconnecting...]\x1b[0m\r\n')
+        term.write('\r\n\x1b[33;1m[Connection lost. Reconnecting...]\r\n')
       } else if (status === 'connected') {
         term.write('\x1b[32;1m[Reconnected!]\x1b[0m\r\n')
       }
@@ -133,6 +149,7 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
     return () => {
       window.removeEventListener('resize', handleResize)
       terminalEl?.removeEventListener('contextmenu', handleContextMenu, true)
+      terminalEl?.removeEventListener('paste', handleNativePaste as any, true)
       window.api.removeSshListeners(sessionId)
       term.dispose()
     }
