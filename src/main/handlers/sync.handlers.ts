@@ -34,4 +34,8 @@ export function registerSyncHandlers() {
   ipcMain.handle('sync:set-secure-passphrase', async (_, passphrase: string | null) => {
     return await SyncService.setSecurePassphrase(passphrase);
   });
+
+  ipcMain.handle('sync:get-local-stats', async () => {
+    return await SyncService.getSyncLocalStats();
+  });
 }

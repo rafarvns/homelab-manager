@@ -39,6 +39,7 @@ const api = {
   syncPush: (config: any, passphrase: string) => ipcRenderer.invoke('sync:push', config, passphrase),
   syncPull: (config: any, passphrase: string) => ipcRenderer.invoke('sync:pull', config, passphrase),
   syncSetSecurePassphrase: (passphrase: string | null) => ipcRenderer.invoke('sync:set-secure-passphrase', passphrase),
+  syncGetLocalStats: () => ipcRenderer.invoke('sync:get-local-stats'),
   onSyncDataUpdated: (callback: () => void) => {
     ipcRenderer.on('sync:data-updated', () => callback());
   },

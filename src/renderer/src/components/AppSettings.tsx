@@ -11,7 +11,8 @@ type SettingsTab = 'sync' | 'appearance' | 'general' | 'about';
 const AppSettings = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('sync');
   const [lastSync, setLastSync] = useState<string | null>(null);
-  const [syncing, setSyncing] = useState<string | null>(null); // 'push' | 'pull' | null
+  const [fileSize, setFileSize] = useState<number | null>(null);
+  const [syncing, setSyncing] = useState<'push' | 'pull' | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const { toggleGlobalSettings, toggleSyncModal, isAutoSyncEnabled, setAutoSync, fetchAutoSyncStatus, fetchServers, fetchSettings } = useAppStore();
@@ -19,7 +20,26 @@ const AppSettings = () => {
   useEffect(() => {
     window.api.settingsGet<string>('sync_last_at').then(setLastSync);
     fetchAutoSyncStatus();
+    fetchSyncStats();
   }, []);
+
+  const fetchSyncStats = async () => {
+    try {
+      const stats = await window.api.syncGetLocalStats();
+      setFileSize(stats.size);
+    } catch (e) {
+      console.error('Failed to fetch sync stats', e);
+    }
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const mb = bytes / (1024 * 1024);
+    if (mb < 0.1) {
+      return (bytes / 1024).toFixed(1) + ' KB';
+    }
+    return mb.toFixed(2) + ' MB';
+  };
 
   // Clear notification after 5 seconds
   useEffect(() => {
@@ -113,6 +133,7 @@ const AppSettings = () => {
         const now = new Date().toISOString();
         await window.api.settingsSet('sync_last_at', now);
         setLastSync(now);
+        await fetchSyncStats();
         setNotification({ type: 'success', message: 'Data pushed successfully!' });
       } else {
         setNotification({ type: 'error', message: "Push failed: " + result.message });
@@ -141,6 +162,7 @@ const AppSettings = () => {
         setNotification({ type: 'success', message: 'Data pulled and merged successfully!' });
         fetchServers();
         fetchSettings();
+        await fetchSyncStats();
       } else {
         setNotification({ type: 'error', message: "Pull failed: " + result.message });
       }
@@ -263,6 +285,7 @@ const AppSettings = () => {
                       <p style={{ margin: 0, fontSize: '0.85rem', opacity: 0.6 }}>Follow these steps to enable cross-machine data portability.</p>
                     </div>
                   </div>
+«delete»
                   
                   <div className="step-list">
                     <div className="step-item">
@@ -349,14 +372,20 @@ const AppSettings = () => {
                     <div className="sync-status-footer" style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                           <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: lastSync ? 'var(--success-color)' : 'var(--danger-color)', boxShadow: lastSync ? '0 0 8px var(--success-color)' : 'none' }}></div>
-                           <div style={{ fontSize: '0.85rem' }}>
-                             {lastSync ? (
-                               <span style={{ color: 'var(--text-secondary)' }}>Synced <strong style={{ color: 'var(--text-primary)' }}>{new Date(lastSync).toLocaleString()}</strong></span>
-                             ) : (
-                               <span style={{ color: 'var(--danger-color)', fontWeight: '600' }}>Offline / Not Configured</span>
-                             )}
-                           </div>
+                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: lastSync ? 'var(--success-color)' : 'var(--danger-color)', boxShadow: lastSync ? '0 0 8px var(--success-color)' : 'none' }}></div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                               <div style={{ fontSize: '0.85rem' }}>
+                                 {lastSync ? (
+                                   <span style={{ color: 'var(--text-secondary)' }}>Synced <strong style={{ color: 'var(--text-primary)' }}>{new Date(lastSync).toLocaleString()}</strong></span>
+                                 ) : (
+                                   <span style={{ color: 'var(--danger-color)', fontWeight: '600' }}>Offline / Not Configured</span>
+                                 )}
+                               </div>
+                               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                 <span>Payload Size:</span>
+                                 <strong style={{ color: 'var(--text-primary)' }}>{fileSize !== null ? formatSize(fileSize) : 'Calculating...'}</strong>
+                               </div>
+                            </div>
                          </div>
                          <div style={{ display: 'flex', gap: '12px' }}>
                            <button 

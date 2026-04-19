@@ -171,30 +171,10 @@ export class SyncService {
   static async push(config: SyncConfig, passphrase: string): Promise<{ success: boolean; message: string }> {
     try {
       // 1. Export Data
-      const db = getDb();
-      const servers = db.prepare('SELECT * FROM servers ORDER BY sort_order ASC').all() as any[];
-      const settings = db.prepare('SELECT key, value FROM settings').all() as any[];
-
-      // Decrypt sensitive fields before packing
-      const decryptedServers = servers.map(s => ({
-        ...s,
-        password: decryptLocal(s.password),
-        passphrase: decryptLocal(s.passphrase),
-        private_key_path: decryptLocal(s.private_key_path)
-      }));
-
-      const payload = JSON.stringify({
-        version: '1.0',
-        timestamp: Date.now(),
-        servers: decryptedServers,
-        settings: settings.filter(s => !s.key.startsWith('sync_') && s.key !== 'window_state')
-      });
-
-      // 2. Encrypt with Sync Passphrase
-      const encryptedBuffer = encryptSyncPayload(payload, passphrase);
+      const payload = await this.getPayload(passphrase);
 
       // 3. Upload via SFTP
-      await this.uploadBuffer(config, encryptedBuffer);
+      await this.uploadBuffer(config, payload);
 
       return { success: true, message: 'Sync pushed successfully' };
     } catch (err: any) {
@@ -209,6 +189,46 @@ export class SyncService {
       
       return { success: false, message };
     }
+  }
+
+  /**
+   * Generates the encrypted sync payload
+   */
+  private static async getPayload(passphrase: string): Promise<Buffer> {
+    const db = getDb();
+    const servers = db.prepare('SELECT * FROM servers ORDER BY sort_order ASC').all() as any[];
+    const settings = db.prepare('SELECT key, value FROM settings').all() as any[];
+
+    // Decrypt sensitive fields before packing
+    const decryptedServers = servers.map(s => ({
+      ...s,
+      password: decryptLocal(s.password),
+      passphrase: decryptLocal(s.passphrase),
+      private_key_path: decryptLocal(s.private_key_path)
+    }));
+
+    const data = JSON.stringify({
+      version: '1.0',
+      timestamp: Date.now(),
+      servers: decryptedServers,
+      settings: settings.filter(s => !s.key.startsWith('sync_') && s.key !== 'window_state')
+    });
+
+    return encryptSyncPayload(data, passphrase);
+  }
+
+  /**
+   * Gets statistics about the local sync payload
+   */
+  static async getSyncLocalStats(): Promise<{ size: number }> {
+    const passphrase = await this.getSecurePassphrase();
+    if (!passphrase) {
+       // Estimate with dummy passphrase if unknown, to show user something
+       const dummy = await this.getPayload("est-size-only");
+       return { size: dummy.length };
+    }
+    const payload = await this.getPayload(passphrase);
+    return { size: payload.length };
   }
 
   /**

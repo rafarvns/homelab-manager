@@ -95,6 +95,7 @@ declare global {
       syncPush: (config: any, passphrase: string) => Promise<{ success: boolean; message: string }>;
       syncPull: (config: any, passphrase: string) => Promise<{ success: boolean; message: string }>;
       syncSetSecurePassphrase: (passphrase: string | null) => Promise<void>;
+      syncGetLocalStats: () => Promise<{ size: number }>;
       onSyncDataUpdated: (callback: () => void) => void;
     }
   }
