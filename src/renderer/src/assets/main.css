@@ -859,6 +859,7 @@ body {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .settings-section {
@@ -1849,6 +1850,8 @@ input:checked + .slider:before {
   flex: 1;
   gap: 16px;
   min-height: 0;
+  height: 400px; /* Fallback fixed height */
+  max-height: calc(100vh - 260px); /* Lock size to container viewport */
   position: relative;
 }
 

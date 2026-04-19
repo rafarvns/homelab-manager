@@ -341,8 +341,9 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
                       <span className="slider round"></span>
                     </label>
                   </div>
-                  <button className="btn btn-icon" onClick={() => loadServices(true)} title="Refresh List">
-                    <RefreshCcw size={16} className={servicesLoading ? 'spin' : ''} />
+                  <button className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '8px 12px' }} onClick={() => loadServices(true)} title="Refresh List">
+                    <RefreshCcw size={14} className={servicesLoading ? 'spin' : ''} />
+                    <span style={{ fontSize: '0.85rem' }}>Refresh List</span>
                   </button>
                 </div>
               </div>
