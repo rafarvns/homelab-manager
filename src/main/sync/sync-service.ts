@@ -1,23 +1,42 @@
-import { Client } from 'ssh2';
-import * as fs from 'fs';
 import { safeStorage, webContents } from 'electron';
 import { getDb } from '../db/database';
 import { decrypt as decryptLocal, encrypt as encryptLocal } from '../db/security';
 import { encryptSyncPayload, decryptSyncPayload } from '../db/security.sync';
-
-export interface SyncConfig {
-  host: string;
-  port: number;
-  username: string;
-  auth_type: 'password' | 'key';
-  password?: string;
-  private_key_path?: string;
-  remote_path: string;
-}
+import { SFTPProvider } from './providers/sftp.provider';
+import { GoogleDriveProvider } from './providers/gdrive.provider';
+import { SyncProvider, SyncConfig } from './provider.types';
+import { GDriveAuth } from './gdrive-auth';
 
 export class SyncService {
   private static autoSyncInterval: NodeJS.Timeout | null = null;
   private static isSyncing = false;
+
+  static async getProvider(config?: SyncConfig): Promise<SyncProvider> {
+    const db = getDb();
+    const activeProvider = config?.provider || 
+      (db.prepare("SELECT value FROM settings WHERE key = 'sync_provider'").get() as { value: string } | undefined)?.value || 
+      'sftp';
+
+    if (activeProvider === 'gdrive') {
+      return new GoogleDriveProvider();
+    }
+
+    // Default to SFTP if config not provided, load from settings
+    let sftpConfig = config;
+    if (!sftpConfig) {
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'sync_sftp_config'").get() as { value: string } | undefined;
+      if (row) sftpConfig = JSON.parse(row.value);
+    }
+
+    if (!sftpConfig) throw new Error('SFTP configuration not found');
+    
+    // Decrypt credentials for the connection
+    const processedConfig = { ...sftpConfig };
+    if (processedConfig.password) processedConfig.password = decryptLocal(processedConfig.password)!;
+    if (processedConfig.private_key_path) processedConfig.private_key_path = decryptLocal(processedConfig.private_key_path)!;
+
+    return new SFTPProvider(processedConfig);
+  }
 
   /**
    * Starts the background auto-sync loop (Pull every 15 minutes)
@@ -43,22 +62,14 @@ export class SyncService {
     const autoEnabled = db.prepare("SELECT value FROM settings WHERE key = 'sync_auto_enabled'").get() as { value: string } | undefined;
     if (autoEnabled?.value !== 'true') return;
 
-    const configRow = db.prepare("SELECT value FROM settings WHERE key = 'sync_sftp_config'").get() as { value: string } | undefined;
-    if (!configRow) return;
-
     const passphrase = await this.getSecurePassphrase();
     if (!passphrase) return;
-
-    const config = JSON.parse(configRow.value) as SyncConfig;
-    
-    // Decrypt credentials for the connection
-    if (config.password) config.password = decryptLocal(config.password)!;
-    if (config.private_key_path) config.private_key_path = decryptLocal(config.private_key_path)!;
 
     console.log('[AutoSync] Running background pull...');
     this.isSyncing = true;
     try {
-      const result = await this.pull(config, passphrase);
+      const provider = await this.getProvider();
+      const result = await this.pull(provider, passphrase);
       if (result.success) {
         console.log('[AutoSync] Pull successful. Notifying renderer.');
         this.notifyDataChanged();
@@ -78,19 +89,13 @@ export class SyncService {
     const autoEnabled = db.prepare("SELECT value FROM settings WHERE key = 'sync_auto_enabled'").get() as { value: string } | undefined;
     if (autoEnabled?.value !== 'true') return;
 
-    const configRow = db.prepare("SELECT value FROM settings WHERE key = 'sync_sftp_config'").get() as { value: string } | undefined;
-    if (!configRow) return;
-
     const passphrase = await this.getSecurePassphrase();
     if (!passphrase) return;
 
-    const config = JSON.parse(configRow.value) as SyncConfig;
-    if (config.password) config.password = decryptLocal(config.password)!;
-    if (config.private_key_path) config.private_key_path = decryptLocal(config.private_key_path)!;
-
     console.log('[AutoSync] Triggering auto-push...');
     try {
-      await this.push(config, passphrase);
+      const provider = await this.getProvider();
+      await this.push(provider, passphrase);
     } catch (err) {
       console.error('[AutoSync] Auto-push failed:', err);
     }
@@ -139,105 +144,68 @@ export class SyncService {
   }
 
   /**
-   * Tests the SFTP connection with provided config
+   * Tests the connection with provided config
    */
   static async testConnection(config: SyncConfig): Promise<{ success: boolean; message: string }> {
-    return new Promise((resolve) => {
-      const conn = new Client();
-      conn.on('ready', () => {
-        conn.sftp((err) => {
-          if (err) {
-            resolve({ success: false, message: `SFTP Error: ${err.message}` });
-          } else {
-            resolve({ success: true, message: 'Connection successful' });
-          }
-          conn.end();
-        });
-      }).on('error', (err) => {
-        resolve({ success: false, message: `Connection failed: ${err.message}` });
-      }).connect({
-        host: config.host,
-        port: config.port,
-        username: config.username,
-        password: config.auth_type === 'password' ? config.password : undefined,
-        privateKey: config.auth_type === 'key' && config.private_key_path ? fs.readFileSync(config.private_key_path) : undefined
-      });
-    });
+    try {
+      const provider = await this.getProvider(config);
+      return await provider.test();
+    } catch (err: any) {
+      return { success: false, message: err.message };
+    }
+  }
+
+  /**
+   * OAuth logic
+   */
+  static async connectGDrive() {
+    return await GDriveAuth.authorize();
+  }
+
+  static async getGDriveAccount() {
+    const provider = new GoogleDriveProvider();
+    return await provider.getAccountInfo();
   }
 
   /**
    * Pushes local database data to the remote server
    */
-  static async push(config: SyncConfig, passphrase: string): Promise<{ success: boolean; message: string }> {
+  static async push(provider_or_config: SyncProvider | SyncConfig, passphrase: string): Promise<{ success: boolean; message: string }> {
     try {
+      let provider: SyncProvider;
+      if ('upload' in provider_or_config) {
+        provider = provider_or_config;
+      } else {
+        provider = await this.getProvider(provider_or_config);
+      }
+
       // 1. Export Data
       const payload = await this.getPayload(passphrase);
 
-      // 3. Upload via SFTP
-      await this.uploadBuffer(config, payload);
+      // 3. Upload
+      await provider.upload(payload);
 
       return { success: true, message: 'Sync pushed successfully' };
     } catch (err: any) {
       console.error('[Sync Push Error]:', err);
-      let message = err.message;
-      
-      if (message.includes('Permission denied') || err.code === 3) {
-        message = 'Permission denied. Ensure the path starts with a writable subdirectory (like "upload/") and the NAS folder has correct permissions.';
-      } else if (message.includes('No such file') || err.code === 2) {
-        message = `No such file. Ensure the folder in your path exists or is writable. Path: "${config.remote_path}"`;
-      }
-      
-      return { success: false, message };
+      return { success: false, message: err.message };
     }
-  }
-
-  /**
-   * Generates the encrypted sync payload
-   */
-  private static async getPayload(passphrase: string): Promise<Buffer> {
-    const db = getDb();
-    const servers = db.prepare('SELECT * FROM servers ORDER BY sort_order ASC').all() as any[];
-    const settings = db.prepare('SELECT key, value FROM settings').all() as any[];
-
-    // Decrypt sensitive fields before packing
-    const decryptedServers = servers.map(s => ({
-      ...s,
-      password: decryptLocal(s.password),
-      passphrase: decryptLocal(s.passphrase),
-      private_key_path: decryptLocal(s.private_key_path)
-    }));
-
-    const data = JSON.stringify({
-      version: '1.0',
-      timestamp: Date.now(),
-      servers: decryptedServers,
-      settings: settings.filter(s => !s.key.startsWith('sync_') && s.key !== 'window_state')
-    });
-
-    return encryptSyncPayload(data, passphrase);
-  }
-
-  /**
-   * Gets statistics about the local sync payload
-   */
-  static async getSyncLocalStats(): Promise<{ size: number }> {
-    const passphrase = await this.getSecurePassphrase();
-    if (!passphrase) {
-       // Estimate with dummy passphrase if unknown, to show user something
-       const dummy = await this.getPayload("est-size-only");
-       return { size: dummy.length };
-    }
-    const payload = await this.getPayload(passphrase);
-    return { size: payload.length };
   }
 
   /**
    * Pulls data from remote server and merges into local database
    */
-  static async pull(config: SyncConfig, passphrase: string): Promise<{ success: boolean; message: string }> {
+  static async pull(provider_or_config: SyncProvider | SyncConfig, passphrase: string): Promise<{ success: boolean; message: string }> {
     try {
+      let provider: SyncProvider;
+      if ('download' in provider_or_config) {
+        provider = provider_or_config;
+      } else {
+        provider = await this.getProvider(provider_or_config);
+      }
+
       // 1. Download
-      const buffer = await this.downloadBuffer(config);
+      const buffer = await provider.download();
 
       // 2. Decrypt
       const jsonString = decryptSyncPayload(buffer, passphrase);
@@ -299,95 +267,46 @@ export class SyncService {
       return { success: true, message: 'Sync pulled and merged successfully' };
     } catch (err: any) {
       console.error('[Sync Pull Error]:', err);
-      let message = err.message;
-      if (message.includes('No such file') || err.code === 2) {
-        message = 'No remote sync file found. Did you push from another device first?';
-      }
-      return { success: false, message };
+      return { success: false, message: err.message };
     }
-  }
-
-  private static uploadBuffer(config: SyncConfig, buffer: Buffer): Promise<void> {
-    return new Promise((resolve, reject) => {
-      const conn = new Client();
-      conn.on('ready', () => {
-        conn.sftp(async (err, sftp) => {
-          if (err) return reject(err);
-          
-          try {
-            // Try to ensure directory structure exists
-            const lastSlash = config.remote_path.lastIndexOf('/');
-            if (lastSlash !== -1) {
-              const dir = config.remote_path.substring(0, lastSlash);
-              await this.ensureRemoteDir(sftp, dir);
-            }
-
-            const writeStream = sftp.createWriteStream(config.remote_path);
-            writeStream.on('close', () => {
-              conn.end();
-              resolve();
-            }).on('error', (err) => {
-              conn.end();
-              reject(err);
-            });
-            writeStream.end(buffer);
-          } catch (error) {
-            conn.end();
-            reject(error);
-          }
-        });
-      }).on('error', reject).connect({
-        host: config.host,
-        port: config.port,
-        username: config.username,
-        password: config.auth_type === 'password' ? config.password : undefined,
-        privateKey: config.auth_type === 'key' && config.private_key_path ? fs.readFileSync(config.private_key_path) : undefined
-      });
-    });
   }
 
   /**
-   * Recursively ensures that a remote directory exists
+   * Generates the encrypted sync payload
    */
-  private static async ensureRemoteDir(sftp: any, path: string): Promise<void> {
-    const parts = path.split('/').filter(p => !!p);
-    let current = path.startsWith('/') ? '/' : '';
-    
-    for (const part of parts) {
-      current += (current === '/' || current === '' ? '' : '/') + part;
-      await new Promise<void>((resolve) => {
-        sftp.mkdir(current, (err: any) => {
-          // Failure (Code 4) usually means it already exists, so we just move on
-          resolve();
-        });
-      });
-    }
+  private static async getPayload(passphrase: string): Promise<Buffer> {
+    const db = getDb();
+    const servers = db.prepare('SELECT * FROM servers ORDER BY sort_order ASC').all() as any[];
+    const settings = db.prepare('SELECT key, value FROM settings').all() as any[];
+
+    // Decrypt sensitive fields before packing
+    const decryptedServers = servers.map(s => ({
+      ...s,
+      password: decryptLocal(s.password),
+      passphrase: decryptLocal(s.passphrase),
+      private_key_path: decryptLocal(s.private_key_path)
+    }));
+
+    const data = JSON.stringify({
+      version: '1.0',
+      timestamp: Date.now(),
+      servers: decryptedServers,
+      settings: settings.filter(s => !s.key.startsWith('sync_') && s.key !== 'window_state')
+    });
+
+    return encryptSyncPayload(data, passphrase);
   }
 
-  private static downloadBuffer(config: SyncConfig): Promise<Buffer> {
-    return new Promise((resolve, reject) => {
-      const conn = new Client();
-      conn.on('ready', () => {
-        conn.sftp((err, sftp) => {
-          if (err) return reject(err);
-          const readStream = sftp.createReadStream(config.remote_path);
-          const chunks: Buffer[] = [];
-          readStream.on('data', (chunk: Buffer) => chunks.push(chunk));
-          readStream.on('close', () => {
-            conn.end();
-            resolve(Buffer.concat(chunks));
-          }).on('error', (err) => {
-            conn.end();
-            reject(err);
-          });
-        });
-      }).on('error', reject).connect({
-        host: config.host,
-        port: config.port,
-        username: config.username,
-        password: config.auth_type === 'password' ? config.password : undefined,
-        privateKey: config.auth_type === 'key' && config.private_key_path ? fs.readFileSync(config.private_key_path) : undefined
-      });
-    });
+  /**
+   * Gets statistics about the local sync payload
+   */
+  static async getSyncLocalStats(): Promise<{ size: number }> {
+    const passphrase = await this.getSecurePassphrase();
+    if (!passphrase) {
+       const dummy = await this.getPayload("est-size-only");
+       return { size: dummy.length };
+    }
+    const payload = await this.getPayload(passphrase);
+    return { size: payload.length };
   }
 }

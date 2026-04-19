@@ -38,6 +38,8 @@ const api = {
   syncTestConnection: (config: any) => ipcRenderer.invoke('sync:test-connection', config),
   syncPush: (config: any, passphrase: string) => ipcRenderer.invoke('sync:push', config, passphrase),
   syncPull: (config: any, passphrase: string) => ipcRenderer.invoke('sync:pull', config, passphrase),
+  syncConnectGDrive: () => ipcRenderer.invoke('sync:connect-gdrive'),
+  syncGetGDriveAccount: () => ipcRenderer.invoke('sync:get-gdrive-account'),
   syncSetSecurePassphrase: (passphrase: string | null) => ipcRenderer.invoke('sync:set-secure-passphrase', passphrase),
   syncGetLocalStats: () => ipcRenderer.invoke('sync:get-local-stats'),
   onSyncDataUpdated: (callback: () => void) => {

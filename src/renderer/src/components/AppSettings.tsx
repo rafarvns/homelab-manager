@@ -15,10 +15,20 @@ const AppSettings = () => {
   const [syncing, setSyncing] = useState<'push' | 'pull' | null>(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [syncProvider, setSyncProvider] = useState<'sftp' | 'gdrive'>('sftp');
+  const [gdriveAccount, setGdriveAccount] = useState<{ email?: string; status: string }>({ status: 'Disconnected' });
+  const [showGDriveModal, setShowGDriveModal] = useState(false);
+  const [gdriveConfig, setGdriveConfig] = useState({ client_id: '', client_secret: '' });
+
   const { toggleGlobalSettings, toggleSyncModal, isAutoSyncEnabled, setAutoSync, fetchAutoSyncStatus, fetchServers, fetchSettings } = useAppStore();
 
   useEffect(() => {
     window.api.settingsGet<string>('sync_last_at').then(setLastSync);
+    window.api.settingsGet<'sftp' | 'gdrive'>('sync_provider').then(p => setSyncProvider(p || 'sftp'));
+    window.api.syncGetGDriveAccount().then(setGdriveAccount);
+    window.api.settingsGet<string>('sync_gdrive_client_id').then(id => setGdriveConfig(prev => ({ ...prev, client_id: id || '' })));
+    window.api.settingsGet<string>('sync_gdrive_client_secret').then(sec => setGdriveConfig(prev => ({ ...prev, client_secret: sec || '' })));
+
     fetchAutoSyncStatus();
     fetchSyncStats();
   }, []);
@@ -114,6 +124,40 @@ const AppSettings = () => {
     } catch (err: any) {
       setNotification({ type: 'error', message: "Failed: " + err.message });
     }
+  };
+
+  const handleConnectGDrive = async () => {
+    try {
+      if (!gdriveConfig.client_id || !gdriveConfig.client_secret) {
+        setShowGDriveModal(true);
+        return;
+      }
+
+      setNotification({ type: 'success', message: 'Opening browser for Google authorization...' });
+      const success = await window.api.syncConnectGDrive();
+      if (success) {
+        const acc = await window.api.syncGetGDriveAccount();
+        setGdriveAccount(acc);
+        setSyncProvider('gdrive');
+        await window.api.settingsSet('sync_provider', 'gdrive');
+        setNotification({ type: 'success', message: 'Google Drive connected successfully!' });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', message: err.message });
+    }
+  };
+
+  const handleSaveGDriveConfig = async () => {
+    await window.api.settingsSet('sync_gdrive_client_id', gdriveConfig.client_id);
+    await window.api.settingsSet('sync_gdrive_client_secret', gdriveConfig.client_secret);
+    setShowGDriveModal(false);
+    handleConnectGDrive();
+  };
+
+  const switchProvider = async (provider: 'sftp' | 'gdrive') => {
+    setSyncProvider(provider);
+    await window.api.settingsSet('sync_provider', provider);
+    setNotification({ type: 'success', message: `Sync provider switched to ${provider.toUpperCase()}` });
   };
 
   const handlePush = async () => {
@@ -258,11 +302,11 @@ const AppSettings = () => {
           )}
 
           {activeTab === 'sync' && (
-            <div className="settings-section animate-fade-in">
+            <div className="sync-section-container animate-fade-in">
               <div className="settings-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
-                  <h2 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.5px' }}>Synchronization</h2>
-                  <p style={{ fontSize: '1rem', marginTop: '4px', opacity: 0.7 }}>Securely sync your servers and configurations.</p>
+                  <h2 style={{ fontSize: '1.8rem', fontWeight: '800', letterSpacing: '-0.5px', marginBottom: '4px' }}>Synchronization</h2>
+                  <p style={{ fontSize: '1rem', opacity: 0.7 }}>Securely sync your servers and configurations.</p>
                 </div>
                 <button 
                   className="btn btn-secondary btn-sm" 
@@ -275,9 +319,9 @@ const AppSettings = () => {
               </div>
 
               {showTutorial && (
-                <div className="tutorial-section animate-view-fade" style={{ marginBottom: '32px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '24px' }}>
-                    <div style={{ background: 'var(--accent-color)', padding: '10px', borderRadius: '10px', color: 'white', display: 'flex' }}>
+                <div className="tutorial-section animate-view-fade">
+                  <div className="card-header">
+                    <div className="card-icon" style={{ background: 'var(--accent-color)', color: 'white' }}>
                       <Shield size={20} />
                     </div>
                     <div>
@@ -285,160 +329,231 @@ const AppSettings = () => {
                       <p style={{ margin: 0, fontSize: '0.85rem', opacity: 0.6 }}>Follow these steps to enable cross-machine data portability.</p>
                     </div>
                   </div>
-«delete»
                   
                   <div className="step-list">
                     <div className="step-item">
                       <div className="step-number">1</div>
                       <div className="step-content">
-                        <h4>Secure SFTP Endpoint</h4>
-                        <p>Configure a connection to your private SFTP server. This acts as the secure vault for your encrypted database file.</p>
+                        <h4>Secure Vault</h4>
+                        <p>Configure SFTP or Google Drive to act as your secure storage vault.</p>
                       </div>
                     </div>
                     <div className="step-item">
                       <div className="step-number">2</div>
                       <div className="step-content">
-                        <h4>Master Sync Passphrase</h4>
-                        <p>Create a passphrase that is never stored. Your data is encrypted using AES-256-GCM locally before any network transfer.</p>
+                        <h4>Sync Passphrase</h4>
+                        <p>AES-256-GCM encryption ensures your data is encrypted before leaving your machine.</p>
                       </div>
                     </div>
                     <div className="step-item">
                       <div className="step-number">3</div>
                       <div className="step-content">
-                        <h4>Push, Pull & Merge</h4>
-                        <p>Push your data to the vault. On any other machine, Pull & Merge to seamlessly synchronize your homelab environment.</p>
+                        <h4>Push & Merge</h4>
+                        <p>Push your workspace and pull/merge it on any other device seamlessly.</p>
                       </div>
                     </div>
                   </div>
                 </div>
               )}
 
-              <div className="sync-options-grid">
-                {/* Auto Sync Card (Compact) */}
-                <div className="glass-card sync-card animate-view-fade" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div className="card-icon" style={{ background: isAutoSyncEnabled ? 'rgba(46, 160, 67, 0.1)' : 'rgba(255,255,255,0.03)', color: isAutoSyncEnabled ? 'var(--success-color)' : 'var(--text-secondary)', width: '40px', height: '40px', minWidth: '40px' }}>
-                    <RefreshCw size={20} className={isAutoSyncEnabled ? 'animate-spin-slow' : ''} />
-                  </div>
-                  
-                  <div style={{ flex: 1 }}>
-                    <h3 style={{ fontSize: '1.05rem', fontWeight: '700', margin: 0 }}>Auto-Sync</h3>
-                    <p style={{ fontSize: '0.8rem', opacity: 0.6, margin: 0 }}>
-                      {isAutoSyncEnabled 
-                        ? 'Background sync active (15min check).' 
-                        : 'Automatically sync data between devices.'
-                      }
-                    </p>
-                  </div>
-
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingLeft: '16px', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
-                    <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isAutoSyncEnabled ? 'var(--success-color)' : 'var(--text-secondary)' }}>
-                      {isAutoSyncEnabled ? 'ACTIVE' : 'OFF'}
-                    </span>
-                    <label className="switch">
-                      <input 
-                        type="checkbox" 
-                        checked={isAutoSyncEnabled} 
-                        onChange={toggleAutoSync} 
-                      />
-                      <span className="slider round"></span>
-                    </label>
-                  </div>
+              {/* Auto Sync - Feature Row */}
+              <div className="glass-card mb-16" style={{ padding: '16px 24px', flexDirection: 'row', alignItems: 'center', gap: '20px' }}>
+                <div className={`card-icon ${isAutoSyncEnabled ? 'active-sync' : ''}`} style={{ width: '44px', height: '44px' }}>
+                  <RefreshCw size={20} className={isAutoSyncEnabled ? 'animate-spin-slow' : ''} />
+                </div>
+                
+                <div style={{ flex: 1 }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: '700', margin: 0 }}>Auto-Sync</h3>
+                  <p style={{ fontSize: '0.8rem', opacity: 0.6, margin: 0 }}>
+                    {isAutoSyncEnabled 
+                      ? 'Background sync is active (Running every 15 minutes)' 
+                      : 'Automatically synchronize your environment in the background.'
+                    }
+                  </p>
                 </div>
 
-                <div className="glass-card sync-card active-sync">
-                  <div style={{ position: 'absolute', top: '24px', right: '24px' }}>
-                    <span className="feature-badge">Privacy First</span>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingLeft: '20px', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+                  <span style={{ fontSize: '0.7rem', fontWeight: '800', color: isAutoSyncEnabled ? 'var(--success-color)' : 'var(--text-secondary)' }}>
+                    {isAutoSyncEnabled ? 'ON' : 'OFF'}
+                  </span>
+                  <label className="switch">
+                    <input 
+                      type="checkbox" 
+                      checked={isAutoSyncEnabled} 
+                      onChange={toggleAutoSync} 
+                    />
+                    <span className="slider round"></span>
+                  </label>
+                </div>
+              </div>
 
-                  <div className="card-icon" style={{ background: 'rgba(88, 166, 255, 0.1)', color: 'var(--accent-color)', width: '64px', height: '64px', minWidth: '64px' }}>
-                    <Server size={32} />
-                  </div>
-                  
-                  <div className="card-body" style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                      <div>
-                        <h3 style={{ fontSize: '1.4rem', fontWeight: '700', marginBottom: '4px' }}>Self-Hosted SFTP</h3>
-                        <p style={{ fontSize: '0.95rem', opacity: 0.7 }}>Secure file transfer protocol for ultimate data ownership.</p>
+              <div className="sync-options-grid">
+                {/* SFTP Card */}
+                <div className={`glass-card sync-card ${syncProvider === 'sftp' ? 'active-sync' : ''}`}>
+                  <div>
+                    <div className="card-header">
+                      <div className="card-icon">
+                        <Server size={24} />
                       </div>
+                      <div className="card-content">
+                        <h3>Self-Hosted SFTP</h3>
+                        <p>Private infrastructure storage.</p>
+                      </div>
+                    </div>
+                    
+                    <div style={{ paddingLeft: '64px' }}>
                       <button 
-                        className="btn btn-primary" 
+                        className="btn btn-secondary btn-small" 
                         onClick={() => toggleSyncModal(true)}
-                        style={{ padding: '8px 20px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer' }}
+                        style={{ background: 'rgba(255,255,255,0.05)' }}
                       >
-                        {lastSync ? 'Configure' : 'Get Started'}
+                        Configuration
                       </button>
                     </div>
+                  </div>
 
-                    <div className="sync-status-footer" style={{ marginTop: '32px', paddingTop: '24px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <div style={{ width: '10px', height: '10px', borderRadius: '50%', background: lastSync ? 'var(--success-color)' : 'var(--danger-color)', boxShadow: lastSync ? '0 0 8px var(--success-color)' : 'none' }}></div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                               <div style={{ fontSize: '0.85rem' }}>
-                                 {lastSync ? (
-                                   <span style={{ color: 'var(--text-secondary)' }}>Synced <strong style={{ color: 'var(--text-primary)' }}>{new Date(lastSync).toLocaleString()}</strong></span>
-                                 ) : (
-                                   <span style={{ color: 'var(--danger-color)', fontWeight: '600' }}>Offline / Not Configured</span>
-                                 )}
-                               </div>
-                               <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                 <span>Payload Size:</span>
-                                 <strong style={{ color: 'var(--text-primary)' }}>{fileSize !== null ? formatSize(fileSize) : 'Calculating...'}</strong>
-                               </div>
-                            </div>
-                         </div>
-                         <div style={{ display: 'flex', gap: '12px' }}>
-                           <button 
-                             className="btn btn-secondary" 
-                             onClick={handlePull}
-                             disabled={!!syncing}
-                             style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}
-                           >
-                              <RefreshCw size={14} className={syncing === 'pull' ? 'animate-spin' : ''} />
-                              Pull & Merge
-                           </button>
-                           <button 
-                             className="btn btn-primary" 
-                             onClick={handlePush}
-                             disabled={!!syncing}
-                             style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px', cursor: 'pointer' }}
-                           >
-                              <RefreshCw size={14} className={syncing === 'push' ? 'animate-spin' : ''} />
-                              Push Data
-                           </button>
-                         </div>
+                  <div className="card-footer">
+                    <div className={`status-pill ${(lastSync && syncProvider === 'sftp') ? 'online' : ''}`}>
+                      <div className="status-line-dot"></div>
+                      <span>
+                        {syncProvider === 'sftp' && lastSync ? `Synced: ${new Date(lastSync).toLocaleTimeString()}` : 'Ready to Sync'}
+                      </span>
+                    </div>
+                    <button 
+                      className={`feature-badge ${syncProvider === 'sftp' ? 'active-sync' : ''}`}
+                      onClick={() => switchProvider('sftp')}
+                      style={{ border: 'none', background: syncProvider === 'sftp' ? 'rgba(88, 166, 255, 0.2)' : 'rgba(255,255,255,0.05)', color: syncProvider === 'sftp' ? 'var(--accent-color)' : 'var(--text-secondary)', cursor: 'pointer' }}
+                    >
+                      {syncProvider === 'sftp' ? 'ACTIVE' : 'SELECT'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Google Drive Card */}
+                <div className={`glass-card sync-card provider-gdrive ${syncProvider === 'gdrive' ? 'active-sync' : ''}`}>
+                  <div>
+                    <div className="card-header">
+                      <div className="card-icon">
+                        <Cloud size={24} />
                       </div>
+                      <div className="card-content">
+                        <h3>Google Drive</h3>
+                        <p>Cloud sync via AppData Folder.</p>
+                      </div>
+                    </div>
+                    
+                    <div style={{ paddingLeft: '64px', display: 'flex', gap: '8px' }}>
+                      <button 
+                        className="btn btn-gdrive btn-small" 
+                        onClick={handleConnectGDrive}
+                      >
+                       {gdriveAccount.status === 'Connected' ? 'Reconnect' : 'Connect Account'}
+                      </button>
+                      <button className="icon-btn" onClick={() => setShowGDriveModal(true)} title="Cloud Auth Config">
+                        <Lock size={12} />
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="card-footer">
+                    <div className={`status-pill ${gdriveAccount.status === 'Connected' ? 'online' : ''}`}>
+                      <div className="status-line-dot"></div>
+                      <span>
+                        {gdriveAccount.status === 'Connected' ? gdriveAccount.email : 'Not Authorized'}
+                      </span>
+                    </div>
+                    <button 
+                      className={`feature-badge ${syncProvider === 'gdrive' ? 'active-sync' : ''}`}
+                      onClick={() => gdriveAccount.status === 'Connected' && switchProvider('gdrive')}
+                      style={{ border: 'none', background: syncProvider === 'gdrive' ? 'rgba(46, 160, 67, 0.2)' : 'rgba(255,255,255,0.05)', color: syncProvider === 'gdrive' ? 'var(--success-color)' : 'var(--text-secondary)', cursor: 'pointer' }}
+                    >
+                      {syncProvider === 'gdrive' ? 'ACTIVE' : 'SELECT'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Bar */}
+              <div className="sync-action-bar">
+                <div className="action-stats">
+                  <div className="card-icon" style={{ background: 'rgba(255,255,255,0.03)', width: '40px', height: '40px' }}>
+                    <Shield size={20} className={syncing ? 'animate-spin' : ''} />
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Payload Health</span>
+                    <span className="stat-value">{fileSize !== null ? formatSize(fileSize) : 'Analyzing...'}</span>
+                  </div>
+                  <div className="stat-item">
+                    <span className="stat-label">Encryption</span>
+                    <span className="stat-value" style={{ color: 'var(--accent-color)' }}>AES-256-GCM</span>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', gap: '12px' }}>
+                  <button className="btn btn-secondary" onClick={handlePull} disabled={!!syncing}>
+                    <RefreshCw size={14} className={syncing === 'pull' ? 'animate-spin' : ''} style={{ marginRight: '8px' }} />
+                    Pull & Merge
+                  </button>
+                  <button className="btn btn-primary" onClick={handlePush} disabled={!!syncing}>
+                    <RefreshCw size={14} className={syncing === 'push' ? 'animate-spin' : ''} style={{ marginRight: '8px' }} />
+                    Push Workspace
+                  </button>
+                </div>
+              </div>
+
+              <div className="settings-footer-privacy">
+                <Shield size={14} color="var(--accent-color)" />
+                <span>
+                  <strong>Privacy First:</strong> Your server list and settings are encrypted locally. We never see your raw data.
+                </span>
+              </div>
+              {/* Google Drive Config Modal */}
+              {showGDriveModal && (
+                <div className="modal-overlay" style={{ zIndex: 2000 }}>
+                  <div className="modal" style={{ width: '500px' }}>
+                    <div className="card-header">
+                      <div className="card-icon" style={{ background: '#34a853', color: 'white' }}>
+                        <Lock size={20} />
+                      </div>
+                      <h3 style={{ margin: 0 }}>Google Cloud Credentials</h3>
+                    </div>
+
+                    <div className="info-box mb-16" style={{ background: 'rgba(52, 168, 83, 0.05)', border: '1px solid rgba(52, 168, 83, 0.1)', color: '#34a853' }}>
+                      <Info size={16} />
+                      <p style={{ fontSize: '0.8rem' }}>
+                        Configure Redirect URI: <code>http://localhost:42856</code>
+                      </p>
+                    </div>
+
+                    <div className="form-group">
+                      <label>Client ID</label>
+                      <input 
+                        type="text" 
+                        value={gdriveConfig.client_id} 
+                        onChange={e => setGdriveConfig({ ...gdriveConfig, client_id: e.target.value })}
+                        placeholder="Paste Client ID"
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label>Client Secret</label>
+                      <input 
+                        type="password" 
+                        value={gdriveConfig.client_secret} 
+                        onChange={e => setGdriveConfig({ ...gdriveConfig, client_secret: e.target.value })}
+                        placeholder="Paste Client Secret"
+                      />
+                    </div>
+
+                    <div className="modal-actions">
+                      <button className="btn btn-secondary" onClick={() => setShowGDriveModal(false)}>Cancel</button>
+                      <button className="btn btn-primary" style={{ background: '#34a853', borderColor: '#34a853' }} onClick={handleSaveGDriveConfig} disabled={!gdriveConfig.client_id || !gdriveConfig.client_secret}>
+                        Save & Connect
+                      </button>
                     </div>
                   </div>
                 </div>
-
-                <div className="glass-card sync-card" style={{ opacity: 0.5, borderStyle: 'dashed' }}>
-                  <div className="card-icon" style={{ background: 'rgba(255, 255, 255, 0.03)', color: 'var(--text-secondary)', width: '64px', height: '64px', minWidth: '64px' }}>
-                    <Cloud size={32} />
-                  </div>
-                  <div className="card-body">
-                    <h3 style={{ color: 'var(--text-secondary)', fontSize: '1.2rem' }}>Google Drive</h3>
-                    <p>Integrate directly with your cloud storage provider.</p>
-                    <span className="feature-badge" style={{ background: 'var(--panel-border)', color: 'var(--text-secondary)' }}>Coming Soon</span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="settings-footer-privacy animate-fade-in" style={{ 
-                marginTop: '40px', 
-                paddingTop: '20px', 
-                borderTop: '1px solid rgba(255,255,255,0.05)',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                opacity: 0.6,
-                fontSize: '0.8rem'
-              }}>
-                <Shield size={14} color="var(--accent-color)" />
-                <span>
-                  <strong>End-to-End Encrypted:</strong> We utilize military-grade <strong>AES-256-GCM</strong>. Your passphrase stays on your device.
-                </span>
-              </div>
+              )}
             </div>
           )}
 

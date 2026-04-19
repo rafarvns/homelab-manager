@@ -1,5 +1,6 @@
 import { ipcMain } from 'electron';
-import { SyncService, SyncConfig } from '../sync/sync-service';
+import { SyncService } from '../sync/sync-service';
+import { SyncConfig } from '../sync/provider.types';
 import { decrypt } from '../db/security';
 
 export function registerSyncHandlers() {
@@ -29,6 +30,14 @@ export function registerSyncHandlers() {
     if (processedConfig.private_key_path) processedConfig.private_key_path = decrypt(processedConfig.private_key_path)!;
 
     return await SyncService.pull(processedConfig, passphrase);
+  });
+
+  ipcMain.handle('sync:connect-gdrive', async () => {
+    return await SyncService.connectGDrive();
+  });
+
+  ipcMain.handle('sync:get-gdrive-account', async () => {
+    return await SyncService.getGDriveAccount();
   });
 
   ipcMain.handle('sync:set-secure-passphrase', async (_, passphrase: string | null) => {

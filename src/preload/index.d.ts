@@ -94,6 +94,8 @@ declare global {
       syncTestConnection: (config: any) => Promise<{ success: boolean; message: string }>;
       syncPush: (config: any, passphrase: string) => Promise<{ success: boolean; message: string }>;
       syncPull: (config: any, passphrase: string) => Promise<{ success: boolean; message: string }>;
+      syncConnectGDrive: () => Promise<boolean>;
+      syncGetGDriveAccount: () => Promise<{ email?: string; status: string }>;
       syncSetSecurePassphrase: (passphrase: string | null) => Promise<void>;
       syncGetLocalStats: () => Promise<{ size: number }>;
       onSyncDataUpdated: (callback: () => void) => void;
