@@ -5,6 +5,7 @@ import { useAppStore } from './store'
 import TerminalView from './components/TerminalView'
 import ServerSettings from './components/ServerSettings'
 import ServerForm from './components/ServerForm'
+import AppSettings from './components/AppSettings'
 
 // Dnd Kit Imports
 import {
@@ -145,8 +146,8 @@ const SortableTabItem = ({ session, servers, activeSessionId, onSelect, onClose 
 
 function App() {
   const { 
-    servers, sessions, activeSessionId, activeServerId, isAddModalOpen, isSidebarCollapsed,
-    fetchServers, fetchSettings, toggleSidebar, openAddModal, addSession, createNewSession, openSettings, setActiveSession, closeSession, switchServerContext,
+    servers, sessions, activeSessionId, activeServerId, isAddModalOpen, isSidebarCollapsed, isGlobalSettingsOpen,
+    fetchServers, fetchSettings, toggleSidebar, toggleGlobalSettings, openAddModal, addSession, createNewSession, openSettings, setActiveSession, closeSession, switchServerContext,
     reorderServers, reorderSessions
   } = useAppStore()
 
@@ -224,6 +225,14 @@ function App() {
         </div>
 
         <div className="sidebar-footer">
+          <button 
+            className={`global-settings-btn ${isGlobalSettingsOpen ? 'active' : ''}`} 
+            onClick={() => toggleGlobalSettings(!isGlobalSettingsOpen)}
+            title="App Settings"
+          >
+            <Settings size={18} />
+            {!isSidebarCollapsed && <span>App Settings</span>}
+          </button>
           <button className="collapse-toggle" onClick={toggleSidebar} title={isSidebarCollapsed ? "Expand" : "Collapse"}>
             {isSidebarCollapsed ? <ChevronRight size={18} /> : (
               <>
@@ -237,7 +246,9 @@ function App() {
 
       {/* Main Content */}
       <div className="main-area">
-        {activeServerId ? (
+        {isGlobalSettingsOpen ? (
+          <AppSettings />
+        ) : activeServerId ? (
           <>
             {/* Tabs */}
             <div className="tab-bar">

@@ -29,12 +29,14 @@ interface AppState {
   isAddModalOpen: boolean;
   editingServer: Server | null;
   isSidebarCollapsed: boolean;
+  isGlobalSettingsOpen: boolean;
   
   setServers: (servers: Server[]) => void;
   fetchServers: () => Promise<void>;
   fetchSettings: () => Promise<void>;
   
   toggleSidebar: () => void;
+  toggleGlobalSettings: (open: boolean) => void;
   openAddModal: () => void;
   openEditModal: (server: Server) => void;
   closeAddModal: () => void;
@@ -59,6 +61,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isAddModalOpen: false,
   editingServer: null,
   isSidebarCollapsed: false,
+  isGlobalSettingsOpen: false,
   
   setServers: (servers) => set({ servers }),
   
@@ -67,6 +70,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ isSidebarCollapsed: nextState });
     window.api.settingsSet('isSidebarCollapsed', nextState);
   },
+
+  toggleGlobalSettings: (open) => set({ isGlobalSettingsOpen: open }),
   
   fetchSettings: async () => {
     const isCollapsed = await window.api.settingsGet<boolean>('isSidebarCollapsed');
@@ -80,13 +85,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ servers });
   },
 
-  openAddModal: () => set({ isAddModalOpen: true, editingServer: null }),
-  openEditModal: (server) => set({ isAddModalOpen: true, editingServer: server }),
+  openAddModal: () => set({ isAddModalOpen: true, editingServer: null, isGlobalSettingsOpen: false }),
+  openEditModal: (server) => set({ isAddModalOpen: true, editingServer: server, isGlobalSettingsOpen: false }),
   closeAddModal: () => set({ isAddModalOpen: false, editingServer: null }),
 
   addSession: async (serverId: number) => {
     // If double-clicking, we switch to context and check sessions
-    set({ activeServerId: serverId });
+    set({ activeServerId: serverId, isGlobalSettingsOpen: false });
 
     const existingSessions = get().sessions.filter(s => s.serverId === serverId && s.type === 'terminal');
     if (existingSessions.length > 0) {
@@ -144,7 +149,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   openSettings: (serverId: number) => {
     const existing = get().sessions.find(s => s.serverId === serverId && s.type === 'settings');
     if (existing) {
-      set({ activeSessionId: existing.id });
+      set({ activeSessionId: existing.id, isGlobalSettingsOpen: false });
       set((state) => ({
         activeSessionPerServer: { ...state.activeSessionPerServer, [serverId]: existing.id }
       }));
@@ -155,6 +160,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       sessions: [...state.sessions, { id: sessionId, serverId, type: 'settings', status: 'connected' }],
       activeSessionId: sessionId,
+      activeServerId: serverId,
+      isGlobalSettingsOpen: false,
       activeSessionPerServer: { ...state.activeSessionPerServer, [serverId]: sessionId }
     }));
   },
@@ -162,6 +169,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   switchServerContext: (serverId: number) => {
     const lastSessionId = get().activeSessionPerServer[serverId] || null;
     set({ 
+      isGlobalSettingsOpen: false,
       activeServerId: serverId, 
       activeSessionId: lastSessionId 
     });

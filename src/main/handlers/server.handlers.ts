@@ -1,4 +1,5 @@
 import { getDb } from '../db/database';
+import { encrypt, decrypt } from '../db/security';
 
 export interface ServerInput {
   name: string;
@@ -17,7 +18,14 @@ export interface ServerInput {
 
 export function getAllServers() {
   const db = getDb();
-  return db.prepare('SELECT * FROM servers ORDER BY sort_order ASC, name ASC').all();
+  const servers = db.prepare('SELECT * FROM servers ORDER BY sort_order ASC, name ASC').all() as any[];
+  
+  return servers.map(s => ({
+    ...s,
+    password: decrypt(s.password),
+    passphrase: decrypt(s.passphrase),
+    private_key_path: decrypt(s.private_key_path)
+  }));
 }
 
 export function createServer(server: ServerInput) {
@@ -37,9 +45,9 @@ export function createServer(server: ServerInput) {
     port: server.port,
     username: server.username,
     auth_type: server.auth_type,
-    password: server.password || null,
-    private_key_path: server.private_key_path || null,
-    passphrase: server.passphrase || null,
+    password: encrypt(server.password) || null,
+    private_key_path: encrypt(server.private_key_path) || null,
+    passphrase: encrypt(server.passphrase) || null,
     icon: server.icon || 'Server',
     sort_order: maxOrder + 1,
     group_name: server.group_name || null,
@@ -48,7 +56,13 @@ export function createServer(server: ServerInput) {
   };
 
   const info = stmt.run(payload);
-  return { id: info.lastInsertRowid, ...payload };
+  return { 
+    id: info.lastInsertRowid, 
+    ...payload,
+    password: decrypt(payload.password),
+    passphrase: decrypt(payload.passphrase),
+    private_key_path: decrypt(payload.private_key_path)
+  };
 }
 
 export function updateServer(id: number, server: ServerInput) {
@@ -69,9 +83,9 @@ export function updateServer(id: number, server: ServerInput) {
     port: server.port,
     username: server.username,
     auth_type: server.auth_type,
-    password: server.password || null,
-    private_key_path: server.private_key_path || null,
-    passphrase: server.passphrase || null,
+    password: encrypt(server.password) || null,
+    private_key_path: encrypt(server.private_key_path) || null,
+    passphrase: encrypt(server.passphrase) || null,
     icon: server.icon || 'Server',
     group_name: server.group_name || null,
     tags: server.tags || null,
@@ -79,7 +93,12 @@ export function updateServer(id: number, server: ServerInput) {
   };
 
   stmt.run(payload);
-  return payload;
+  return {
+    ...payload,
+    password: decrypt(payload.password),
+    passphrase: decrypt(payload.passphrase),
+    private_key_path: decrypt(payload.private_key_path)
+  };
 }
 
 export function updateServersOrder(ids: number[]) {
@@ -104,5 +123,13 @@ export function deleteServer(id: number) {
 
 export function getServer(id: number) {
   const db = getDb();
-  return db.prepare('SELECT * FROM servers WHERE id = ?').get(id);
+  const s = db.prepare('SELECT * FROM servers WHERE id = ?').get(id) as any;
+  if (!s) return null;
+  
+  return {
+    ...s,
+    password: decrypt(s.password),
+    passphrase: decrypt(s.passphrase),
+    private_key_path: decrypt(s.private_key_path)
+  };
 }
