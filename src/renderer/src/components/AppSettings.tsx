@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Cloud, RefreshCw, 
   Shield, Globe, Palette, Info, ExternalLink, X,
-  Server, AlertCircle
+  Server, AlertCircle, Lock
 } from 'lucide-react';
 import { useAppStore } from '../store';
 
@@ -14,10 +14,11 @@ const AppSettings = () => {
   const [syncing, setSyncing] = useState<string | null>(null); // 'push' | 'pull' | null
   const [showTutorial, setShowTutorial] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
-  const { toggleGlobalSettings, toggleSyncModal } = useAppStore();
+  const { toggleGlobalSettings, toggleSyncModal, isAutoSyncEnabled, setAutoSync, fetchAutoSyncStatus, fetchServers, fetchSettings } = useAppStore();
 
   useEffect(() => {
     window.api.settingsGet<string>('sync_last_at').then(setLastSync);
+    fetchAutoSyncStatus();
   }, []);
 
   // Clear notification after 5 seconds
@@ -28,6 +29,72 @@ const AppSettings = () => {
     }
     return undefined;
   }, [notification]);
+
+  const [showPassphrasePrompt, setShowPassphrasePrompt] = useState(false);
+  const [promptPassphrase, setPromptPassphrase] = useState('');
+
+  const toggleAutoSync = async () => {
+    console.log('[AppSettings] Toggling Auto-Sync. Current state:', isAutoSyncEnabled);
+    if (!isAutoSyncEnabled) {
+      // Enabling
+      try {
+        const config = await window.api.settingsGet('sync_sftp_config');
+        console.log('[AppSettings] SFTP Config retrieved:', config);
+        
+        if (!config || Object.keys(config).length === 0) {
+          console.log('[AppSettings] No SFTP config found, opening configuration modal.');
+          toggleSyncModal(true);
+          return;
+        }
+
+        // Open custom prompt instead of window.prompt
+        setShowPassphrasePrompt(true);
+      } catch (err: any) {
+        console.error('[AppSettings] Failed to enable auto-sync:', err);
+        setNotification({ type: 'error', message: "Failed to enable: " + err.message });
+      }
+    } else {
+      // Disabling
+      console.log('[AppSettings] Disabling Auto-Sync.');
+      try {
+        await setAutoSync(false);
+        await window.api.syncSetSecurePassphrase(null);
+        setNotification({ type: 'success', message: 'Auto-Sync disabled.' });
+      } catch (err: any) {
+        console.error('[AppSettings] Failed to disable auto-sync:', err);
+      }
+    }
+  };
+
+  const handleConfirmAutoSync = async () => {
+    if (!promptPassphrase.trim()) return;
+
+    setShowPassphrasePrompt(false);
+    setNotification({ type: 'success', message: 'Encrypting and saving secure credentials...' });
+
+    try {
+      const config = await window.api.settingsGet('sync_sftp_config');
+      await window.api.syncSetSecurePassphrase(promptPassphrase);
+      await setAutoSync(true);
+      setNotification({ type: 'success', message: 'Auto-Sync enabled! Pushing initial state...' });
+      
+      // Push initial state
+      window.api.syncPush(config, promptPassphrase).then(res => {
+         if (res.success) {
+          const now = new Date().toISOString();
+          window.api.settingsSet('sync_last_at', now);
+          setLastSync(now);
+          console.log('[AppSettings] Initial auto-push success.');
+         } else {
+           console.error('[AppSettings] Initial auto-push failed:', res.message);
+           setNotification({ type: 'error', message: "Sync error: " + res.message });
+         }
+      });
+      setPromptPassphrase('');
+    } catch (err: any) {
+      setNotification({ type: 'error', message: "Failed: " + err.message });
+    }
+  };
 
   const handlePush = async () => {
     const config = await window.api.settingsGet('sync_sftp_config');
@@ -71,8 +138,9 @@ const AppSettings = () => {
     try {
       const result = await window.api.syncPull(config, passphrase);
       if (result.success) {
-        setNotification({ type: 'success', message: 'Data pulled and merged! Reloading...' });
-        setTimeout(() => window.location.reload(), 1500);
+        setNotification({ type: 'success', message: 'Data pulled and merged successfully!' });
+        fetchServers();
+        fetchSettings();
       } else {
         setNotification({ type: 'error', message: "Pull failed: " + result.message });
       }
@@ -92,6 +160,43 @@ const AppSettings = () => {
 
   return (
     <div className="terminal-container app-settings-view active">
+      {/* Custom Passphrase Prompt Modal */}
+      {showPassphrasePrompt && (
+        <div className="modal-overlay" style={{ zIndex: 2000 }}>
+          <div className="modal" style={{ width: '400px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
+              <div style={{ background: 'var(--accent-color)', padding: '10px', borderRadius: '10px', color: 'white' }}>
+                <Lock size={20} />
+              </div>
+              <h3 style={{ margin: 0 }}>Enable Auto-Sync</h3>
+            </div>
+            
+            <p style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '20px' }}>
+              Enter your <strong>Sync Passphrase</strong>. It will be stored securely on this machine to allow automated background operations.
+            </p>
+
+            <div className="form-group">
+              <label>Sync Passphrase</label>
+              <input 
+                type="password" 
+                autoFocus
+                value={promptPassphrase} 
+                onChange={e => setPromptPassphrase(e.target.value)}
+                placeholder="Enter passphrase"
+                onKeyDown={e => e.key === 'Enter' && handleConfirmAutoSync()}
+              />
+            </div>
+
+            <div className="modal-actions" style={{ marginTop: '24px' }}>
+              <button className="btn btn-secondary" onClick={() => { setShowPassphrasePrompt(false); setPromptPassphrase(''); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleConfirmAutoSync} disabled={!promptPassphrase.trim()}>
+                Confirm & Enable
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="settings-layout app-settings-layout">
         <div className="settings-sidebar">
           <div className="settings-sidebar-header">
@@ -186,6 +291,37 @@ const AppSettings = () => {
               )}
 
               <div className="sync-options-grid">
+                {/* Auto Sync Card (Compact) */}
+                <div className="glass-card sync-card animate-view-fade" style={{ padding: '16px 20px', display: 'flex', alignItems: 'center', gap: '16px' }}>
+                  <div className="card-icon" style={{ background: isAutoSyncEnabled ? 'rgba(46, 160, 67, 0.1)' : 'rgba(255,255,255,0.03)', color: isAutoSyncEnabled ? 'var(--success-color)' : 'var(--text-secondary)', width: '40px', height: '40px', minWidth: '40px' }}>
+                    <RefreshCw size={20} className={isAutoSyncEnabled ? 'animate-spin-slow' : ''} />
+                  </div>
+                  
+                  <div style={{ flex: 1 }}>
+                    <h3 style={{ fontSize: '1.05rem', fontWeight: '700', margin: 0 }}>Auto-Sync</h3>
+                    <p style={{ fontSize: '0.8rem', opacity: 0.6, margin: 0 }}>
+                      {isAutoSyncEnabled 
+                        ? 'Background sync active (15min check).' 
+                        : 'Automatically sync data between devices.'
+                      }
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px', paddingLeft: '16px', borderLeft: '1px solid rgba(255,255,255,0.05)' }}>
+                    <span style={{ fontSize: '0.7rem', fontWeight: '700', color: isAutoSyncEnabled ? 'var(--success-color)' : 'var(--text-secondary)' }}>
+                      {isAutoSyncEnabled ? 'ACTIVE' : 'OFF'}
+                    </span>
+                    <label className="switch">
+                      <input 
+                        type="checkbox" 
+                        checked={isAutoSyncEnabled} 
+                        onChange={toggleAutoSync} 
+                      />
+                      <span className="slider round"></span>
+                    </label>
+                  </div>
+                </div>
+
                 <div className="glass-card sync-card active-sync">
                   <div style={{ position: 'absolute', top: '24px', right: '24px' }}>
                     <span className="feature-badge">Privacy First</span>
@@ -204,7 +340,7 @@ const AppSettings = () => {
                       <button 
                         className="btn btn-primary" 
                         onClick={() => toggleSyncModal(true)}
-                        style={{ padding: '8px 20px', borderRadius: '10px', fontWeight: '600' }}
+                        style={{ padding: '8px 20px', borderRadius: '10px', fontWeight: '600', cursor: 'pointer' }}
                       >
                         {lastSync ? 'Configure' : 'Get Started'}
                       </button>
@@ -227,7 +363,7 @@ const AppSettings = () => {
                              className="btn btn-secondary" 
                              onClick={handlePull}
                              disabled={!!syncing}
-                             style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}
+                             style={{ display: 'flex', alignItems: 'center', gap: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}
                            >
                               <RefreshCw size={14} className={syncing === 'pull' ? 'animate-spin' : ''} />
                               Pull & Merge
@@ -236,7 +372,7 @@ const AppSettings = () => {
                              className="btn btn-primary" 
                              onClick={handlePush}
                              disabled={!!syncing}
-                             style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px' }}
+                             style={{ display: 'flex', alignItems: 'center', gap: '8px', borderRadius: '10px', cursor: 'pointer' }}
                            >
                               <RefreshCw size={14} className={syncing === 'push' ? 'animate-spin' : ''} />
                               Push Data

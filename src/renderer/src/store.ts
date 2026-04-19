@@ -31,14 +31,17 @@ interface AppState {
   isSidebarCollapsed: boolean;
   isGlobalSettingsOpen: boolean;
   isSyncModalOpen: boolean;
+  isAutoSyncEnabled: boolean;
   
   setServers: (servers: Server[]) => void;
   fetchServers: () => Promise<void>;
   fetchSettings: () => Promise<void>;
+  fetchAutoSyncStatus: () => Promise<void>;
   
   toggleSidebar: () => void;
   toggleGlobalSettings: (open: boolean) => void;
   toggleSyncModal: (open: boolean) => void;
+  setAutoSync: (enabled: boolean) => Promise<void>;
   openAddModal: () => void;
   openEditModal: (server: Server) => void;
   closeAddModal: () => void;
@@ -65,6 +68,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   isSidebarCollapsed: false,
   isGlobalSettingsOpen: false,
   isSyncModalOpen: false,
+  isAutoSyncEnabled: false,
   
   setServers: (servers) => set({ servers }),
   
@@ -77,11 +81,21 @@ export const useAppStore = create<AppState>((set, get) => ({
   toggleGlobalSettings: (open) => set({ isGlobalSettingsOpen: open }),
   toggleSyncModal: (open) => set({ isSyncModalOpen: open }),
   
+  setAutoSync: async (enabled) => {
+    set({ isAutoSyncEnabled: enabled });
+    await window.api.settingsSet('sync_auto_enabled', enabled ? 'true' : 'false');
+  },
+
   fetchSettings: async () => {
     const isCollapsed = await window.api.settingsGet<boolean>('isSidebarCollapsed');
     if (isCollapsed !== null) {
       set({ isSidebarCollapsed: isCollapsed });
     }
+  },
+
+  fetchAutoSyncStatus: async () => {
+    const autoEnabled = await window.api.settingsGet<string>('sync_auto_enabled');
+    set({ isAutoSyncEnabled: autoEnabled === 'true' });
   },
   
   fetchServers: async () => {
@@ -240,3 +254,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   }
 }));
+
+// Setup IPC listeners for realtime updates
+window.api.onSyncDataUpdated?.(() => {
+  useAppStore.getState().fetchServers();
+  useAppStore.getState().fetchSettings();
+});

@@ -1,5 +1,6 @@
 import { Client } from 'ssh2';
 import * as fs from 'fs';
+import { safeStorage, webContents } from 'electron';
 import { getDb } from '../db/database';
 import { decrypt as decryptLocal, encrypt as encryptLocal } from '../db/security';
 import { encryptSyncPayload, decryptSyncPayload } from '../db/security.sync';
@@ -15,6 +16,128 @@ export interface SyncConfig {
 }
 
 export class SyncService {
+  private static autoSyncInterval: NodeJS.Timeout | null = null;
+  private static isSyncing = false;
+
+  /**
+   * Starts the background auto-sync loop (Pull every 15 minutes)
+   */
+  static startAutoSyncLoop() {
+    if (this.autoSyncInterval) clearInterval(this.autoSyncInterval);
+
+    // Initial check after 30 seconds to allow app boot
+    setTimeout(() => this.runAutoPull(), 30000);
+
+    // Every 15 minutes
+    this.autoSyncInterval = setInterval(() => {
+      this.runAutoPull();
+    }, 15 * 60 * 1000);
+
+    console.log('[AutoSync] Loop started (15min interval)');
+  }
+
+  static async runAutoPull() {
+    if (this.isSyncing) return;
+    
+    const db = getDb();
+    const autoEnabled = db.prepare("SELECT value FROM settings WHERE key = 'sync_auto_enabled'").get() as { value: string } | undefined;
+    if (autoEnabled?.value !== 'true') return;
+
+    const configRow = db.prepare("SELECT value FROM settings WHERE key = 'sync_sftp_config'").get() as { value: string } | undefined;
+    if (!configRow) return;
+
+    const passphrase = await this.getSecurePassphrase();
+    if (!passphrase) return;
+
+    const config = JSON.parse(configRow.value) as SyncConfig;
+    
+    // Decrypt credentials for the connection
+    if (config.password) config.password = decryptLocal(config.password)!;
+    if (config.private_key_path) config.private_key_path = decryptLocal(config.private_key_path)!;
+
+    console.log('[AutoSync] Running background pull...');
+    this.isSyncing = true;
+    try {
+      const result = await this.pull(config, passphrase);
+      if (result.success) {
+        console.log('[AutoSync] Pull successful. Notifying renderer.');
+        this.notifyDataChanged();
+      }
+    } catch (err) {
+      console.error('[AutoSync] Background pull failed:', err);
+    } finally {
+      this.isSyncing = false;
+    }
+  }
+
+  /**
+   * Triggers an immediate push if auto-sync is enabled
+   */
+  static async triggerAutoPush() {
+    const db = getDb();
+    const autoEnabled = db.prepare("SELECT value FROM settings WHERE key = 'sync_auto_enabled'").get() as { value: string } | undefined;
+    if (autoEnabled?.value !== 'true') return;
+
+    const configRow = db.prepare("SELECT value FROM settings WHERE key = 'sync_sftp_config'").get() as { value: string } | undefined;
+    if (!configRow) return;
+
+    const passphrase = await this.getSecurePassphrase();
+    if (!passphrase) return;
+
+    const config = JSON.parse(configRow.value) as SyncConfig;
+    if (config.password) config.password = decryptLocal(config.password)!;
+    if (config.private_key_path) config.private_key_path = decryptLocal(config.private_key_path)!;
+
+    console.log('[AutoSync] Triggering auto-push...');
+    try {
+      await this.push(config, passphrase);
+    } catch (err) {
+      console.error('[AutoSync] Auto-push failed:', err);
+    }
+  }
+
+  private static notifyDataChanged() {
+    webContents.getAllWebContents().forEach(wc => {
+      wc.send('sync:data-updated');
+    });
+  }
+
+  /**
+   * Secure Passphrase Management
+   */
+  static async setSecurePassphrase(passphrase: string | null) {
+    const db = getDb();
+    if (!passphrase) {
+      db.prepare("DELETE FROM settings WHERE key = 'sync_passphrase_secure'").run();
+      return;
+    }
+
+    if (!safeStorage.isEncryptionAvailable()) {
+      throw new Error('Encryption is not available on this system.');
+    }
+
+    const encrypted = safeStorage.encryptString(passphrase);
+    db.prepare(`
+      INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP
+    `).run('sync_passphrase_secure', encrypted.toString('base64'));
+  }
+
+  private static async getSecurePassphrase(): Promise<string | null> {
+    const db = getDb();
+    const row = db.prepare("SELECT value FROM settings WHERE key = 'sync_passphrase_secure'").get() as { value: string } | undefined;
+    if (!row) return null;
+
+    if (!safeStorage.isEncryptionAvailable()) return null;
+
+    try {
+      const buffer = Buffer.from(row.value, 'base64');
+      return safeStorage.decryptString(buffer);
+    } catch (e) {
+      return null;
+    }
+  }
+
   /**
    * Tests the SFTP connection with provided config
    */
@@ -49,7 +172,7 @@ export class SyncService {
     try {
       // 1. Export Data
       const db = getDb();
-      const servers = db.prepare('SELECT * FROM servers').all() as any[];
+      const servers = db.prepare('SELECT * FROM servers ORDER BY sort_order ASC').all() as any[];
       const settings = db.prepare('SELECT key, value FROM settings').all() as any[];
 
       // Decrypt sensitive fields before packing
@@ -64,7 +187,7 @@ export class SyncService {
         version: '1.0',
         timestamp: Date.now(),
         servers: decryptedServers,
-        settings: settings.filter(s => !s.key.startsWith('sync_')) // Don't sync sync-credentials
+        settings: settings.filter(s => !s.key.startsWith('sync_') && s.key !== 'window_state')
       });
 
       // 2. Encrypt with Sync Passphrase
@@ -77,9 +200,13 @@ export class SyncService {
     } catch (err: any) {
       console.error('[Sync Push Error]:', err);
       let message = err.message;
+      
       if (message.includes('Permission denied') || err.code === 3) {
         message = 'Permission denied. Ensure the path starts with a writable subdirectory (like "upload/") and the NAS folder has correct permissions.';
+      } else if (message.includes('No such file') || err.code === 2) {
+        message = `No such file. Ensure the folder in your path exists or is writable. Path: "${config.remote_path}"`;
       }
+      
       return { success: false, message };
     }
   }
@@ -152,7 +279,11 @@ export class SyncService {
       return { success: true, message: 'Sync pulled and merged successfully' };
     } catch (err: any) {
       console.error('[Sync Pull Error]:', err);
-      return { success: false, message: err.message };
+      let message = err.message;
+      if (message.includes('No such file') || err.code === 2) {
+        message = 'No remote sync file found. Did you push from another device first?';
+      }
+      return { success: false, message };
     }
   }
 
@@ -160,17 +291,30 @@ export class SyncService {
     return new Promise((resolve, reject) => {
       const conn = new Client();
       conn.on('ready', () => {
-        conn.sftp((err, sftp) => {
+        conn.sftp(async (err, sftp) => {
           if (err) return reject(err);
-          const writeStream = sftp.createWriteStream(config.remote_path);
-          writeStream.on('close', () => {
+          
+          try {
+            // Try to ensure directory structure exists
+            const lastSlash = config.remote_path.lastIndexOf('/');
+            if (lastSlash !== -1) {
+              const dir = config.remote_path.substring(0, lastSlash);
+              await this.ensureRemoteDir(sftp, dir);
+            }
+
+            const writeStream = sftp.createWriteStream(config.remote_path);
+            writeStream.on('close', () => {
+              conn.end();
+              resolve();
+            }).on('error', (err) => {
+              conn.end();
+              reject(err);
+            });
+            writeStream.end(buffer);
+          } catch (error) {
             conn.end();
-            resolve();
-          }).on('error', (err) => {
-            conn.end();
-            reject(err);
-          });
-          writeStream.end(buffer);
+            reject(error);
+          }
         });
       }).on('error', reject).connect({
         host: config.host,
@@ -180,6 +324,24 @@ export class SyncService {
         privateKey: config.auth_type === 'key' && config.private_key_path ? fs.readFileSync(config.private_key_path) : undefined
       });
     });
+  }
+
+  /**
+   * Recursively ensures that a remote directory exists
+   */
+  private static async ensureRemoteDir(sftp: any, path: string): Promise<void> {
+    const parts = path.split('/').filter(p => !!p);
+    let current = path.startsWith('/') ? '/' : '';
+    
+    for (const part of parts) {
+      current += (current === '/' || current === '' ? '' : '/') + part;
+      await new Promise<void>((resolve) => {
+        sftp.mkdir(current, (err: any) => {
+          // Failure (Code 4) usually means it already exists, so we just move on
+          resolve();
+        });
+      });
+    }
   }
 
   private static downloadBuffer(config: SyncConfig): Promise<Buffer> {

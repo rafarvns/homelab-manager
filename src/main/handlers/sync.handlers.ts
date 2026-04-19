@@ -1,8 +1,11 @@
 import { ipcMain } from 'electron';
 import { SyncService, SyncConfig } from '../sync/sync-service';
-import { decrypt, encrypt } from '../db/security';
+import { decrypt } from '../db/security';
 
 export function registerSyncHandlers() {
+  // Start the background loop automatically on boot
+  SyncService.startAutoSyncLoop();
+
   ipcMain.handle('sync:test-connection', async (_, config: SyncConfig) => {
     // Decrypt credentials if they were stored in local DB
     const processedConfig = { ...config };
@@ -26,5 +29,9 @@ export function registerSyncHandlers() {
     if (processedConfig.private_key_path) processedConfig.private_key_path = decrypt(processedConfig.private_key_path)!;
 
     return await SyncService.pull(processedConfig, passphrase);
+  });
+
+  ipcMain.handle('sync:set-secure-passphrase', async (_, passphrase: string | null) => {
+    return await SyncService.setSecurePassphrase(passphrase);
   });
 }

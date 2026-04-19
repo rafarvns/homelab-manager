@@ -247,52 +247,70 @@ function App() {
 
       {/* Main Content */}
       <div className="main-area">
-        {isGlobalSettingsOpen ? (
+        {/* App Settings View */}
+        <div 
+          className="main-view-container animate-fade-in" 
+          style={{ display: isGlobalSettingsOpen ? 'block' : 'none', height: '100%' }}
+        >
           <AppSettings />
-        ) : activeServerId ? (
-          <>
-            {/* Tabs */}
-            <div className="tab-bar">
-              <div className="tabs-scroll-area">
-                <DndContext 
-                  sensors={sensors}
-                  collisionDetection={closestCenter}
-                  onDragEnd={handleTabDragEnd}
-                >
-                  <SortableContext 
-                    items={sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings').map(s => s.id)}
-                    strategy={horizontalListSortingStrategy}
-                  >
-                    {sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings').map((session) => (
-                      <SortableTabItem 
-                        key={session.id} 
-                        session={session}
-                        servers={servers}
-                        activeSessionId={activeSessionId}
-                        onSelect={setActiveSession}
-                        onClose={closeSession}
-                      />
-                    ))}
-                  </SortableContext>
-                </DndContext>
-                <button 
-                  className="new-tab-btn" 
-                  onClick={() => createNewSession(activeServerId)}
-                  title="New Tab"
-                >
-                  <Plus size={14} />
-                </button>
-              </div>
-              <button 
-                className={`settings-tab-btn ${sessions.find(s => s.id === activeSessionId)?.type === 'settings' ? 'active' : ''}`}
-                onClick={() => openSettings(activeServerId)}
-                title="Server Settings"
+        </div>
+
+        {/* Server Content View (Tabs & Terminals) */}
+        {!isGlobalSettingsOpen && !activeServerId && (
+          <div className="empty-state animate-fade-in">
+            <Terminal size={64} style={{ marginBottom: 16, opacity: 0.5 }} />
+            <h2>Homelab Manager</h2>
+            <p>Select or double-click a server in the sidebar to start.</p>
+          </div>
+        )}
+
+        <div 
+          className="main-view-container" 
+          style={{ display: !isGlobalSettingsOpen && activeServerId ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}
+        >
+          {/* Tabs */}
+          <div className="tab-bar">
+            <div className="tabs-scroll-area">
+              <DndContext 
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleTabDragEnd}
               >
-                <Settings size={18} />
+                <SortableContext 
+                  items={sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings').map(s => s.id)}
+                  strategy={horizontalListSortingStrategy}
+                >
+                  {sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings').map((session) => (
+                    <SortableTabItem 
+                      key={session.id} 
+                      session={session}
+                      servers={servers}
+                      activeSessionId={activeSessionId}
+                      onSelect={setActiveSession}
+                      onClose={closeSession}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
+              <button 
+                className="new-tab-btn" 
+                onClick={() => createNewSession(activeServerId!)}
+                title="New Tab"
+              >
+                <Plus size={14} />
               </button>
             </div>
-            
-            {/* Terminals & Settings (keep them mapped but only show active server's ones) */}
+            <button 
+              className={`settings-tab-btn ${sessions.find(s => s.id === activeSessionId)?.type === 'settings' ? 'active' : ''}`}
+              onClick={() => openSettings(activeServerId!)}
+              title="Server Settings"
+            >
+              <Settings size={18} />
+            </button>
+          </div>
+          
+          {/* Terminals & Settings (keep them mapped but only show active server's ones) */}
+          <div className="sessions-container" style={{ flex: 1, position: 'relative' }}>
             {[...sessions].sort((a, b) => a.id.localeCompare(b.id)).map(session => {
               const server = servers.find(s => s.id === session.serverId);
               const isSelected = activeSessionId === session.id;
@@ -318,14 +336,8 @@ function App() {
                 />
               );
             })}
-          </>
-        ) : (
-          <div className="empty-state">
-            <Terminal size={64} style={{ marginBottom: 16, opacity: 0.5 }} />
-            <h2>Homelab Manager</h2>
-            <p>Select or double-click a server in the sidebar to start.</p>
           </div>
-        )}
+        </div>
       </div>
 
       {isAddModalOpen && <ServerForm />}

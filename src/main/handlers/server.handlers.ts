@@ -1,5 +1,6 @@
 import { getDb } from '../db/database';
 import { encrypt, decrypt } from '../db/security';
+import { SyncService } from '../sync/sync-service';
 
 export interface ServerInput {
   name: string;
@@ -56,6 +57,9 @@ export function createServer(server: ServerInput) {
   };
 
   const info = stmt.run(payload);
+  
+  SyncService.triggerAutoPush();
+  
   return { 
     id: info.lastInsertRowid, 
     ...payload,
@@ -93,6 +97,9 @@ export function updateServer(id: number, server: ServerInput) {
   };
 
   stmt.run(payload);
+  
+  SyncService.triggerAutoPush();
+  
   return {
     ...payload,
     password: decrypt(payload.password),
@@ -112,12 +119,18 @@ export function updateServersOrder(ids: number[]) {
   });
 
   transaction(ids);
+  
+  SyncService.triggerAutoPush();
+  
   return { success: true };
 }
 
 export function deleteServer(id: number) {
   const db = getDb();
   db.prepare('DELETE FROM servers WHERE id = ?').run(id);
+  
+  SyncService.triggerAutoPush();
+  
   return { success: true };
 }
 

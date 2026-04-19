@@ -38,6 +38,10 @@ const api = {
   syncTestConnection: (config: any) => ipcRenderer.invoke('sync:test-connection', config),
   syncPush: (config: any, passphrase: string) => ipcRenderer.invoke('sync:push', config, passphrase),
   syncPull: (config: any, passphrase: string) => ipcRenderer.invoke('sync:pull', config, passphrase),
+  syncSetSecurePassphrase: (passphrase: string | null) => ipcRenderer.invoke('sync:set-secure-passphrase', passphrase),
+  onSyncDataUpdated: (callback: () => void) => {
+    ipcRenderer.on('sync:data-updated', () => callback());
+  },
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
