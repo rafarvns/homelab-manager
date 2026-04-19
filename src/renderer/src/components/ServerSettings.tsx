@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import * as LucideIcons from 'lucide-react';
 import { 
   Settings, LayoutDashboard, Server, Shield, HardDrive, 
-  AlertCircle, Activity, Cpu, Clock, Globe, BarChart3, Users, Thermometer
+  AlertCircle, Activity, Cpu, Clock, Globe, BarChart3, Users, Thermometer,
+  Search, RefreshCcw, Play, Square, RotateCw, FileSearch, X, Filter, ChevronDown
 } from 'lucide-react';
 import { useAppStore, Server as ServerType } from '../store';
 import { ServerInput } from './ServerForm';
+import { SystemService } from '../../../preload/index.d';
 
 const AVAILABLE_ICONS = [
   'Server', 'Terminal', 'Database', 'Globe', 'Cpu', 
@@ -35,7 +37,8 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
     password: server.password || '',
     private_key_path: server.private_key_path || '',
     passphrase: server.passphrase || '',
-    icon: server.icon || 'Server'
+    icon: server.icon || 'Server',
+    auto_refresh_services: server.auto_refresh_services || false
   });
 
   const { fetchServers, switchServerContext } = useAppStore();
@@ -43,11 +46,48 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
   const [sysInfoLoading, setSysInfoLoading] = useState(false);
   const [sysInfoError, setSysInfoError] = useState('');
 
+  const [services, setServices] = useState<SystemService[]>([]);
+  const [servicesLoading, setServicesLoading] = useState(false);
+  const [servicesError, setServicesError] = useState('');
+  const [servicesSearch, setServicesSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [enabledFilter, setEnabledFilter] = useState<string>('all');
+  const [selectedServiceLogs, setSelectedServiceLogs] = useState<{name: string, content: string} | null>(null);
+  const [logsLoading, setLogsLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (isActive && !isHidden && activeTab === 'dashboard') {
-      loadSysInfo();
+    setFormData({
+      name: server.name,
+      host: server.host,
+      port: server.port,
+      username: server.username,
+      auth_type: server.auth_type,
+      password: server.password || '',
+      private_key_path: server.private_key_path || '',
+      passphrase: server.passphrase || '',
+      icon: server.icon || 'Server',
+      auto_refresh_services: server.auto_refresh_services || false
+    });
+  }, [server]);
+
+  useEffect(() => {
+    if (isActive && !isHidden) {
+      if (activeTab === 'dashboard') loadSysInfo();
+      if (activeTab === 'services') loadServices();
     }
   }, [isActive, isHidden, activeTab, server.id]);
+
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+    if (isActive && !isHidden && activeTab === 'services' && server.auto_refresh_services) {
+      interval = setInterval(() => {
+        loadServices(true); // silent refresh
+      }, 30000);
+    }
+    return () => { if (interval) clearInterval(interval); };
+  }, [isActive, isHidden, activeTab, server.id, server.auto_refresh_services]);
 
   const loadSysInfo = async () => {
     setSysInfoLoading(true);
@@ -60,6 +100,90 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
       setSysInfoError(err.message || 'Failed to connect and fetch data');
     } finally {
       setSysInfoLoading(false);
+    }
+  };
+
+  const loadServices = async (silent = false) => {
+    if (!silent) setServicesLoading(true);
+    setServicesError('');
+    try {
+      const data = await window.api.servicesList(server.id);
+      setServices(data);
+    } catch (err: any) {
+      console.error('Failed to load services', err);
+      if (!silent) setServicesError(err.message || 'Failed to fetch services');
+    } finally {
+      if (!silent) setServicesLoading(false);
+    }
+  };
+
+  const handleServiceAction = async (serviceName: string, action: 'start' | 'stop' | 'restart') => {
+    setActionLoading(`${serviceName}-${action}`);
+    setActionError(null);
+    try {
+      await window.api.servicesControl(server.id, serviceName, action);
+      await loadServices(true);
+      // If we are looking at logs of this service, refresh them too
+      if (selectedServiceLogs?.name === serviceName) {
+        handleViewLogs(serviceName);
+      }
+    } catch (err: any) {
+      console.error(`Failed to ${action} ${serviceName}`, err);
+      setActionError(`Failed to ${action} ${serviceName}: ${err.message}`);
+      setTimeout(() => setActionError(null), 5000);
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleViewLogs = async (serviceName: string) => {
+    setLogsLoading(true);
+    try {
+      const logs = await window.api.servicesLogs(server.id, serviceName);
+      setSelectedServiceLogs({ name: serviceName, content: logs });
+    } catch (err: any) {
+      console.error(`Failed to fetch logs for ${serviceName}`, err);
+      setActionError(`Failed to get logs for ${serviceName}: ${err.message}`);
+      setTimeout(() => setActionError(null), 5000);
+    } finally {
+      setLogsLoading(false);
+    }
+  };
+
+  const filteredServices = useMemo(() => {
+    return services.filter(s => {
+      const matchSearch = s.name.toLowerCase().includes(servicesSearch.toLowerCase()) ||
+        s.description.toLowerCase().includes(servicesSearch.toLowerCase());
+      const matchStatus = statusFilter === 'all' || s.status === statusFilter;
+      const matchEnabled = enabledFilter === 'all' || 
+        (enabledFilter === 'enabled' && s.enabled) || 
+        (enabledFilter === 'disabled' && !s.enabled);
+      return matchSearch && matchStatus && matchEnabled;
+    });
+  }, [services, servicesSearch, statusFilter, enabledFilter]);
+
+  const statusCounts = useMemo(() => {
+    const counts = { running: 0, stopped: 0, failed: 0, inactive: 0, other: 0 };
+    services.forEach(s => {
+      if (s.status in counts) {
+        counts[s.status as keyof typeof counts]++;
+      } else {
+        counts.other++;
+      }
+    });
+    return counts;
+  }, [services]);
+
+  const toggleAutoRefresh = async () => {
+    const newVal = !server.auto_refresh_services;
+    try {
+      await window.api.serverUpdate(server.id, {
+        ...formData,
+        auto_refresh_services: newVal
+      });
+      await fetchServers();
+    } catch (err) {
+      console.error('Failed to toggle auto refresh', err);
     }
   };
 
@@ -198,13 +322,250 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
           )}
 
           {activeTab === 'services' && (
-            <div className="settings-section">
-              <h2>Services</h2>
-              <div className="placeholder-card">
-                <Server size={48} />
-                <p>Monitor and manage systemd services on <strong>{server.name}</strong>.</p>
-                <span className="badge">Coming Soon</span>
+            <div className="settings-section services-tab">
+              <div className="services-top-bar">
+                <div className="services-top-bar-left">
+                  <h2>System Services</h2>
+                  <span className="services-subtitle">systemd units on <strong>{server.name}</strong></span>
+                </div>
+                <div className="services-top-bar-right">
+                  <div className="auto-refresh-control">
+                    <Clock size={14} />
+                    <span>Auto Refresh</span>
+                    <label className="switch">
+                      <input 
+                        type="checkbox" 
+                        checked={server.auto_refresh_services} 
+                        onChange={toggleAutoRefresh}
+                      />
+                      <span className="slider round"></span>
+                    </label>
+                  </div>
+                  <button className="btn btn-icon" onClick={() => loadServices(true)} title="Refresh List">
+                    <RefreshCcw size={16} className={servicesLoading ? 'spin' : ''} />
+                  </button>
+                </div>
               </div>
+
+              {/* Summary counters */}
+              {services.length > 0 && (
+                <div className="services-summary">
+                  <button 
+                    className={`summary-chip ${statusFilter === 'all' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter('all')}
+                  >
+                    <span className="chip-count">{services.length}</span>
+                    <span>Total</span>
+                  </button>
+                  <button 
+                    className={`summary-chip running ${statusFilter === 'running' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter(statusFilter === 'running' ? 'all' : 'running')}
+                  >
+                    <span className="chip-dot running"></span>
+                    <span className="chip-count">{statusCounts.running}</span>
+                    <span>Running</span>
+                  </button>
+                  <button 
+                    className={`summary-chip stopped ${statusFilter === 'stopped' || statusFilter === 'inactive' ? 'active' : ''}`}
+                    onClick={() => setStatusFilter(statusFilter === 'stopped' ? 'all' : 'stopped')}
+                  >
+                    <span className="chip-dot stopped"></span>
+                    <span className="chip-count">{statusCounts.stopped + statusCounts.inactive}</span>
+                    <span>Stopped</span>
+                  </button>
+                  {statusCounts.failed > 0 && (
+                    <button 
+                      className={`summary-chip failed ${statusFilter === 'failed' ? 'active' : ''}`}
+                      onClick={() => setStatusFilter(statusFilter === 'failed' ? 'all' : 'failed')}
+                    >
+                      <span className="chip-dot failed"></span>
+                      <span className="chip-count">{statusCounts.failed}</span>
+                      <span>Failed</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Toolbar with search and filters */}
+              <div className="services-toolbar">
+                <div className="search-box">
+                  <Search size={16} />
+                  <input 
+                    placeholder="Search services..." 
+                    value={servicesSearch}
+                    onChange={e => setServicesSearch(e.target.value)}
+                  />
+                  {servicesSearch && (
+                    <button className="search-clear" onClick={() => setServicesSearch('')}>
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+                <div className="services-filters">
+                  <div className="filter-select">
+                    <Filter size={14} />
+                    <select 
+                      value={enabledFilter} 
+                      onChange={e => setEnabledFilter(e.target.value)}
+                    >
+                      <option value="all">All Units</option>
+                      <option value="enabled">Enabled</option>
+                      <option value="disabled">Disabled</option>
+                    </select>
+                    <ChevronDown size={14} className="filter-chevron" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Error toast */}
+              {actionError && (
+                <div className="services-error-toast">
+                  <AlertCircle size={14} />
+                  <span>{actionError}</span>
+                  <button onClick={() => setActionError(null)}><X size={14} /></button>
+                </div>
+              )}
+
+              {servicesLoading && services.length === 0 ? (
+                <div className="placeholder-card">
+                  <Activity size={48} className="spin-slow" />
+                  <p>Fetching systemd services...</p>
+                </div>
+              ) : servicesError ? (
+                <div className="placeholder-card error">
+                  <AlertCircle size={48} color="var(--danger-color)" />
+                  <p>{servicesError}</p>
+                  <button className="btn btn-secondary" onClick={() => loadServices()}>Retry</button>
+                </div>
+              ) : (
+                <div className="services-container">
+                  <div className="services-table-wrapper">
+                    <table className="services-table">
+                      <thead>
+                        <tr>
+                          <th>Unit Name</th>
+                          <th>Status</th>
+                          <th>Enabled</th>
+                          <th>Description</th>
+                          <th className="actions-cell">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredServices.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="services-empty-row">
+                              No services match your filters.
+                            </td>
+                          </tr>
+                        ) : filteredServices.map(s => (
+                          <tr key={s.name} className={selectedServiceLogs?.name === s.name ? 'selected' : ''}>
+                            <td className="service-name-cell">{s.name}</td>
+                            <td>
+                              <span className={`status-badge ${s.status}`}>
+                                {s.status}
+                              </span>
+                            </td>
+                            <td>
+                              <span className={`enabled-badge ${s.enabled ? 'yes' : 'no'}`}>
+                                {s.enabled ? 'Enabled' : 'Disabled'}
+                              </span>
+                            </td>
+                            <td className="service-desc-cell" title={s.description}>{s.description}</td>
+                            <td className="actions-cell">
+                              <div className="service-actions-inline">
+                                {s.status === 'running' ? (
+                                  <button 
+                                    className="action-btn stop" 
+                                    title="Stop Service"
+                                    onClick={() => handleServiceAction(s.name, 'stop')}
+                                    disabled={actionLoading === `${s.name}-stop`}
+                                  >
+                                    <Square size={14} />
+                                  </button>
+                                ) : (
+                                  <button 
+                                    className="action-btn start" 
+                                    title="Start Service"
+                                    onClick={() => handleServiceAction(s.name, 'start')}
+                                    disabled={actionLoading === `${s.name}-start`}
+                                  >
+                                    <Play size={14} />
+                                  </button>
+                                )}
+                                <button 
+                                  className="action-btn restart" 
+                                  title="Restart Service"
+                                  onClick={() => handleServiceAction(s.name, 'restart')}
+                                  disabled={actionLoading === `${s.name}-restart`}
+                                >
+                                  <RotateCw size={14} className={actionLoading === `${s.name}-restart` ? 'spin' : ''} />
+                                </button>
+                                <button 
+                                  className={`action-btn logs ${selectedServiceLogs?.name === s.name ? 'active' : ''}`} 
+                                  title="View Journal Logs"
+                                  onClick={() => handleViewLogs(s.name)}
+                                >
+                                  <FileSearch size={14} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {selectedServiceLogs && (
+                    <div className="logs-drawer">
+                      <div className="logs-header">
+                        <div className="logs-header-title">
+                          <FileSearch size={16} />
+                          <span>Journal: <strong>{selectedServiceLogs.name}</strong></span>
+                        </div>
+                        <div className="logs-actions">
+                          <button 
+                            className="action-btn" 
+                            onClick={() => handleViewLogs(selectedServiceLogs.name)} 
+                            title="Refresh Logs"
+                            disabled={logsLoading}
+                          >
+                            <RefreshCcw size={14} className={logsLoading ? 'spin' : ''} />
+                          </button>
+                          <button className="action-btn" onClick={() => setSelectedServiceLogs(null)} title="Close Logs">
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </div>
+                      <div className="logs-content">
+                        {logsLoading ? (
+                          <div className="logs-loading">
+                            <Activity size={32} className="spin" color="var(--accent-color)" />
+                            <p>Tailing journalctl logs...</p>
+                          </div>
+                        ) : (
+                          <pre>{selectedServiceLogs.content || 'No log entries found for this unit.'}</pre>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Footer status bar */}
+              {services.length > 0 && (
+                <div className="services-status-bar">
+                  <span>{filteredServices.length} of {services.length} services shown</span>
+                  {(statusFilter !== 'all' || enabledFilter !== 'all' || servicesSearch) && (
+                    <button className="clear-filters-btn" onClick={() => {
+                      setStatusFilter('all');
+                      setEnabledFilter('all');
+                      setServicesSearch('');
+                    }}>
+                      Clear all filters
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -279,6 +640,16 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
                             );
                           })}
                         </div>
+                      </div>
+                      <div className="form-group">
+                        <label className="checkbox-label">
+                           <input 
+                             type="checkbox" 
+                             checked={formData.auto_refresh_services} 
+                             onChange={e => setFormData({...formData, auto_refresh_services: e.target.checked})} 
+                           />
+                           <span>Auto refresh services list (30s)</span>
+                        </label>
                       </div>
                     </div>
 

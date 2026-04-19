@@ -13,6 +13,14 @@ export interface ServerInput {
   group_name?: string;
   tags?: string;
   notes?: string;
+  auto_refresh_services?: boolean;
+}
+
+export interface SystemService {
+  name: string;
+  status: 'running' | 'stopped' | 'failed' | 'inactive' | 'unknown';
+  enabled: boolean;
+  description: string;
 }
 
 export interface Server extends ServerInput {
@@ -74,6 +82,9 @@ declare global {
       dialogOpenFile: () => Promise<string | null>;
       dialogOpenFiles: () => Promise<string[] | null>;
       serverSysInfo: (serverId: number) => Promise<{os: string, uptime: string, cpu: string, memory: string, disk: string, ip: string, load: string, users: string, temp: string}>;
+      servicesList: (serverId: number) => Promise<SystemService[]>;
+      servicesControl: (serverId: number, name: string, action: 'start' | 'stop' | 'restart' | 'enable' | 'disable') => Promise<{ success: boolean; message: string }>;
+      servicesLogs: (serverId: number, name: string, lines?: number) => Promise<string>;
       sshConnect: (serverId: number, sessionId: string) => Promise<{success: boolean, sessionId: string}>;
       sshInput: (sessionId: string, data: string) => void;
       sshResize: (sessionId: string, cols: number, rows: number) => void;

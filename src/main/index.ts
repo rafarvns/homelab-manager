@@ -10,6 +10,7 @@ import { getAllServers, createServer, updateServer, deleteServer, updateServersO
 import { initDb, getDb } from './db/database'
 import { registerSettingsHandlers } from './handlers/settings.handlers'
 import { registerSyncHandlers } from './handlers/sync.handlers'
+import { listServices, controlService, getServiceLogs } from './ssh/services-manager'
 
 function getWindowState() {
   try {
@@ -136,6 +137,10 @@ app.whenReady().then(() => {
     return await connectToServer(serverId, sessionId, event.sender);
   });
   ipcMain.handle('server:sysinfo', (_, serverId) => getSystemInfo(serverId));
+  ipcMain.handle('services:list', (_, serverId) => listServices(serverId));
+  ipcMain.handle('services:control', (_, serverId, serviceName, action) => controlService(serverId, serviceName, action));
+  ipcMain.handle('services:logs', (_, serverId, serviceName, lines) => getServiceLogs(serverId, serviceName, lines));
+  
   ipcMain.on('ssh:input', (_, sessionId, data) => writeToStream(sessionId, data));
   ipcMain.on('ssh:resize', (_, sessionId, cols, rows) => resizeStream(sessionId, cols, rows));
   ipcMain.on('ssh:disconnect', (_, sessionId) => disconnectSession(sessionId));

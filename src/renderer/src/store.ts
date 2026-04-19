@@ -11,6 +11,7 @@ export interface Server {
   private_key_path?: string;
   passphrase?: string;
   icon?: string;
+  auto_refresh_services?: boolean;
 }
 
 interface Session {

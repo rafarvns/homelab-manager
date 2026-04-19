@@ -12,6 +12,7 @@ export interface ServerInput {
   private_key_path?: string;
   passphrase?: string;
   icon?: string;
+  auto_refresh_services?: boolean;
 }
 import { useAppStore } from '../store'
 
@@ -96,7 +97,8 @@ export default function ServerForm() {
     password: editingServer?.password || '',
     private_key_path: editingServer?.private_key_path || '',
     passphrase: editingServer?.passphrase || '',
-    icon: editingServer?.icon || 'Server'
+    icon: editingServer?.icon || 'Server',
+    auto_refresh_services: editingServer?.auto_refresh_services || false
   })
 
   useEffect(() => {
@@ -110,7 +112,8 @@ export default function ServerForm() {
         password: editingServer.password || '',
         private_key_path: editingServer.private_key_path || '',
         passphrase: editingServer.passphrase || '',
-        icon: editingServer.icon || 'Server'
+        icon: editingServer.icon || 'Server',
+        auto_refresh_services: editingServer.auto_refresh_services || false
       })
     }
   }, [editingServer])
