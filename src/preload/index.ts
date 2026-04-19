@@ -30,6 +30,10 @@ const api = {
   aiRetrieveContext: (request: unknown) => ipcRenderer.invoke('ai:retrieve-context', request),
   aiAddInteraction: (content: string) => ipcRenderer.invoke('ai:add-interaction', content),
   aiGetStats: () => ipcRenderer.invoke('ai:get-stats'),
+  // General Settings
+  settingsGet: (key: string) => ipcRenderer.invoke('settings:get', key),
+  settingsSet: (key: string, value: any) => ipcRenderer.invoke('settings:set', key, value),
+  settingsGetAll: () => ipcRenderer.invoke('settings:getAll'),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

@@ -84,6 +84,11 @@ declare global {
       aiRetrieveContext: (request: ContextRequest) => Promise<ContextResponse>;
       aiAddInteraction: (content: string) => Promise<void>;
       aiGetStats: () => Promise<GraphStats>;
+
+      // General Settings
+      settingsGet: <T = any>(key: string) => Promise<T | null>;
+      settingsSet: (key: string, value: any) => Promise<{ success: boolean }>;
+      settingsGetAll: () => Promise<Record<string, any>>;
     }
   }
 }

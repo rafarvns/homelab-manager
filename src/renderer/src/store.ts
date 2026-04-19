@@ -32,6 +32,7 @@ interface AppState {
   
   setServers: (servers: Server[]) => void;
   fetchServers: () => Promise<void>;
+  fetchSettings: () => Promise<void>;
   
   toggleSidebar: () => void;
   openAddModal: () => void;
@@ -61,7 +62,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   
   setServers: (servers) => set({ servers }),
   
-  toggleSidebar: () => set((state) => ({ isSidebarCollapsed: !state.isSidebarCollapsed })),
+  toggleSidebar: () => {
+    const nextState = !get().isSidebarCollapsed;
+    set({ isSidebarCollapsed: nextState });
+    window.api.settingsSet('isSidebarCollapsed', nextState);
+  },
+  
+  fetchSettings: async () => {
+    const isCollapsed = await window.api.settingsGet<boolean>('isSidebarCollapsed');
+    if (isCollapsed !== null) {
+      set({ isSidebarCollapsed: isCollapsed });
+    }
+  },
   
   fetchServers: async () => {
     const servers = await window.api.serverList();

@@ -6,6 +6,7 @@ import icon from '../../resources/icon.png?asset'
 import { connectToServer, writeToStream, resizeStream, disconnectSession } from './ssh/ssh-manager'
 import { getAllServers, createServer, updateServer, deleteServer, updateServersOrder } from './handlers/server.handlers'
 import { initDb } from './db/database'
+import { registerSettingsHandlers } from './handlers/settings.handlers'
 
 function createWindow(): void {
   // Create the browser window.
@@ -55,6 +56,7 @@ app.whenReady().then(() => {
 
   // Initialize Database
   initDb();
+  registerSettingsHandlers();
 
   ipcMain.handle('server:list', () => getAllServers());
   ipcMain.handle('server:create', (_, serverInput) => createServer(serverInput));

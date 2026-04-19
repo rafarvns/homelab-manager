@@ -146,7 +146,7 @@ const SortableTabItem = ({ session, servers, activeSessionId, onSelect, onClose 
 function App() {
   const { 
     servers, sessions, activeSessionId, activeServerId, isAddModalOpen, isSidebarCollapsed,
-    fetchServers, toggleSidebar, openAddModal, addSession, createNewSession, openSettings, setActiveSession, closeSession, switchServerContext,
+    fetchServers, fetchSettings, toggleSidebar, openAddModal, addSession, createNewSession, openSettings, setActiveSession, closeSession, switchServerContext,
     reorderServers, reorderSessions
   } = useAppStore()
 
@@ -163,6 +163,7 @@ function App() {
 
   useEffect(() => {
     fetchServers()
+    fetchSettings()
   }, [])
 
   const handleServerDragEnd = (event: DragEndEvent) => {
