@@ -76,7 +76,11 @@ export class SyncService {
       return { success: true, message: 'Sync pushed successfully' };
     } catch (err: any) {
       console.error('[Sync Push Error]:', err);
-      return { success: false, message: err.message };
+      let message = err.message;
+      if (message.includes('Permission denied') || err.code === 3) {
+        message = 'Permission denied. Ensure the path starts with a writable subdirectory (like "upload/") and the NAS folder has correct permissions.';
+      }
+      return { success: false, message };
     }
   }
 

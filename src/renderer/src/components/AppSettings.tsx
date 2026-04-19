@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { 
   Cloud, RefreshCw, 
   Shield, Globe, Palette, Info, ExternalLink, X,
-  Server
+  Server, AlertCircle
 } from 'lucide-react';
 import { useAppStore } from '../store';
 
@@ -13,11 +13,21 @@ const AppSettings = () => {
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [syncing, setSyncing] = useState<string | null>(null); // 'push' | 'pull' | null
   const [showTutorial, setShowTutorial] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const { toggleGlobalSettings, toggleSyncModal } = useAppStore();
 
   useEffect(() => {
     window.api.settingsGet<string>('sync_last_at').then(setLastSync);
   }, []);
+
+  // Clear notification after 5 seconds
+  useEffect(() => {
+    if (notification.type) {
+      const timer = setTimeout(() => setNotification({ type: null, message: '' }), 5000);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [notification]);
 
   const handlePush = async () => {
     const config = await window.api.settingsGet('sync_sftp_config');
@@ -29,18 +39,19 @@ const AppSettings = () => {
     if (!passphrase) return;
 
     setSyncing('push');
+    setNotification({ type: null, message: '' });
     try {
       const result = await window.api.syncPush(config, passphrase);
       if (result.success) {
         const now = new Date().toISOString();
         await window.api.settingsSet('sync_last_at', now);
         setLastSync(now);
-        alert("Data pushed successfully!");
+        setNotification({ type: 'success', message: 'Data pushed successfully!' });
       } else {
-        alert("Push failed: " + result.message);
+        setNotification({ type: 'error', message: "Push failed: " + result.message });
       }
     } catch (err: any) {
-      alert("Error: " + err.message);
+      setNotification({ type: 'error', message: "Error: " + err.message });
     } finally {
       setSyncing(null);
     }
@@ -56,16 +67,17 @@ const AppSettings = () => {
     if (!passphrase) return;
 
     setSyncing('pull');
+    setNotification({ type: null, message: '' });
     try {
       const result = await window.api.syncPull(config, passphrase);
       if (result.success) {
-        alert("Data pulled and merged successfully!");
-        window.location.reload();
+        setNotification({ type: 'success', message: 'Data pulled and merged! Reloading...' });
+        setTimeout(() => window.location.reload(), 1500);
       } else {
-        alert("Pull failed: " + result.message);
+        setNotification({ type: 'error', message: "Pull failed: " + result.message });
       }
     } catch (err: any) {
-      alert("Error: " + err.message);
+      setNotification({ type: 'error', message: "Error: " + err.message });
     } finally {
       setSyncing(null);
     }
@@ -106,6 +118,18 @@ const AppSettings = () => {
         </div>
 
         <div className="settings-content">
+          {notification.type && (
+            <div className={`settings-info-box mb-16 animate-view-fade ${notification.type === 'error' ? 'error-box' : ''}`} 
+                 style={{ 
+                   background: notification.type === 'error' ? 'rgba(248, 81, 73, 0.1)' : 'rgba(46, 160, 67, 0.1)',
+                   border: notification.type === 'error' ? '1px solid rgba(248, 81, 73, 0.2)' : '1px solid rgba(46, 160, 67, 0.2)',
+                   color: notification.type === 'error' ? 'var(--danger-color)' : 'var(--success-color)'
+                 }}>
+              {notification.type === 'error' ? <AlertCircle size={16} /> : <RefreshCw size={16} className="animate-spin" />}
+              <p>{notification.message}</p>
+            </div>
+          )}
+
           {activeTab === 'sync' && (
             <div className="settings-section animate-fade-in">
               <div className="settings-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

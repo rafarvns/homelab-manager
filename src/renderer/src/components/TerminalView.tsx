@@ -65,8 +65,8 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
     xtermRef.current = term
     fitAddonRef.current = fitAddon
 
-    // Right-click to Paste
-    terminalRef.current.addEventListener('contextmenu', async (e) => {
+    // Right-click to Paste logic
+    const handleContextMenu = async (e: MouseEvent) => {
       e.preventDefault();
       try {
         const text = await navigator.clipboard.readText();
@@ -76,13 +76,15 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
       } catch (err) {
         console.error('Failed to paste:', err);
       }
-    });
+    };
+
+    terminalRef.current.addEventListener('contextmenu', handleContextMenu);
 
     // Copy on Select
     term.onSelectionChange(() => {
       const selection = term.getSelection();
       if (selection) {
-        navigator.clipboard.writeText(selection);
+        navigator.clipboard.writeText(selection).catch(() => {});
       }
     });
 
@@ -122,6 +124,7 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
 
     return () => {
       window.removeEventListener('resize', handleResize)
+      terminalRef.current?.removeEventListener('contextmenu', handleContextMenu)
       window.api.removeSshListeners(sessionId)
       term.dispose()
     }

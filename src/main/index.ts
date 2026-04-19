@@ -5,15 +5,45 @@ import icon from '../../resources/icon.png?asset'
 
 import { connectToServer, writeToStream, resizeStream, disconnectSession } from './ssh/ssh-manager'
 import { getAllServers, createServer, updateServer, deleteServer, updateServersOrder } from './handlers/server.handlers'
-import { initDb } from './db/database'
+import { initDb, getDb } from './db/database'
 import { registerSettingsHandlers } from './handlers/settings.handlers'
 import { registerSyncHandlers } from './handlers/sync.handlers'
 
+function getWindowState() {
+  try {
+    const db = getDb()
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('window_state') as
+      | { value: string }
+      | undefined
+    return row ? JSON.parse(row.value) : null
+  } catch (e) {
+    return null
+  }
+}
+
+function saveWindowState(window: BrowserWindow) {
+  try {
+    const isMaximized = window.isMaximized()
+    const bounds = isMaximized ? window.getNormalBounds() : window.getBounds()
+    const state = { ...bounds, isMaximized }
+    const db = getDb()
+    db.prepare(
+      'INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP'
+    ).run('window_state', JSON.stringify(state))
+  } catch (e) {
+    console.error('Failed to save window state', e)
+  }
+}
+
 function createWindow(): void {
+  const savedState = getWindowState()
+
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
+    width: savedState?.width || 1200,
+    height: savedState?.height || 800,
+    x: savedState?.x,
+    y: savedState?.y,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
@@ -23,9 +53,24 @@ function createWindow(): void {
     }
   })
 
+  if (savedState?.isMaximized) {
+    mainWindow.maximize()
+  }
+
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
   })
+
+  // Persistence listeners
+  let saveTimeout: NodeJS.Timeout
+  const handleSave = () => {
+    clearTimeout(saveTimeout)
+    saveTimeout = setTimeout(() => saveWindowState(mainWindow), 500)
+  }
+
+  mainWindow.on('resize', handleSave)
+  mainWindow.on('move', handleSave)
+  mainWindow.on('close', () => saveWindowState(mainWindow))
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
@@ -40,6 +85,7 @@ function createWindow(): void {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
 }
+
 
 // This method will be called when Electron has finished
 // initialization and is ready to create browser windows.
