@@ -16,7 +16,7 @@ export interface Server {
 interface Session {
   id: string;
   serverId: number;
-  type: 'terminal' | 'settings';
+  type: 'terminal' | 'settings' | 'file-explorer';
   status: 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
   name?: string;
 }
@@ -50,6 +50,7 @@ interface AppState {
   addSession: (serverId: number) => Promise<void>;
   createNewSession: (serverId: number) => Promise<void>;
   openSettings: (serverId: number) => void;
+  openFileExplorer: (serverId: number) => void;
   closeSession: (sessionId: string) => void;
   setActiveSession: (sessionId: string) => void;
   switchServerContext: (serverId: number) => void;
@@ -179,6 +180,26 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sessionId = `settings_${serverId}`;
     set((state) => ({
       sessions: [...state.sessions, { id: sessionId, serverId, type: 'settings', status: 'connected' }],
+      activeSessionId: sessionId,
+      activeServerId: serverId,
+      isGlobalSettingsOpen: false,
+      activeSessionPerServer: { ...state.activeSessionPerServer, [serverId]: sessionId }
+    }));
+  },
+
+  openFileExplorer: (serverId: number) => {
+    const existing = get().sessions.find(s => s.serverId === serverId && s.type === 'file-explorer');
+    if (existing) {
+      set({ activeSessionId: existing.id, isGlobalSettingsOpen: false });
+      set((state) => ({
+        activeSessionPerServer: { ...state.activeSessionPerServer, [serverId]: existing.id }
+      }));
+      return;
+    }
+
+    const sessionId = `explorer_${serverId}`;
+    set((state) => ({
+      sessions: [...state.sessions, { id: sessionId, serverId, type: 'file-explorer', status: 'connected' }],
       activeSessionId: sessionId,
       activeServerId: serverId,
       isGlobalSettingsOpen: false,

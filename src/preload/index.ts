@@ -11,6 +11,7 @@ const api = {
   serverDelete: (id: number) => ipcRenderer.invoke('server:delete', id),
   serverUpdateOrder: (ids: number[]) => ipcRenderer.invoke('server:update-order', ids),
   dialogOpenFile: () => ipcRenderer.invoke('dialog:openFile'),
+  dialogOpenFiles: () => ipcRenderer.invoke('dialog:openFiles'),
   sshConnect: (serverId: number, sessionId: string) => ipcRenderer.invoke('ssh:connect', serverId, sessionId),
   sshInput: (sessionId: string, data: string) => ipcRenderer.send('ssh:input', sessionId, data),
   sshResize: (sessionId: string, cols: number, rows: number) => ipcRenderer.send('ssh:resize', sessionId, cols, rows),
@@ -25,6 +26,14 @@ const api = {
     ipcRenderer.removeAllListeners(`ssh:data:${sessionId}`);
     ipcRenderer.removeAllListeners(`ssh:status:${sessionId}`);
   },
+  sftpList: (serverId: number, path: string) => ipcRenderer.invoke('sftp:list', serverId, path),
+  sftpRead: (serverId: number, path: string) => ipcRenderer.invoke('sftp:read', serverId, path),
+  sftpWrite: (serverId: number, path: string, content: string) => ipcRenderer.invoke('sftp:write', serverId, path, content),
+  sftpDownload: (serverId: number, path: string, fileName: string) => ipcRenderer.invoke('sftp:download', serverId, path, fileName),
+  sftpMkdir: (serverId: number, path: string) => ipcRenderer.invoke('sftp:mkdir', serverId, path),
+  sftpDelete: (serverId: number, path: string, isDir: boolean) => ipcRenderer.invoke('sftp:delete', serverId, path, isDir),
+  sftpUpload: (serverId: number, localPath: string, remotePath: string) => ipcRenderer.invoke('sftp:upload', serverId, localPath, remotePath),
+  sftpTouch: (serverId: number, path: string) => ipcRenderer.invoke('sftp:touch', serverId, path),
   // Context Graph
   aiIndexProject: () => ipcRenderer.invoke('ai:index-project'),
   aiRetrieveContext: (request: unknown) => ipcRenderer.invoke('ai:retrieve-context', request),

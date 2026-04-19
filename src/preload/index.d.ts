@@ -72,6 +72,7 @@ declare global {
       serverDelete: (id: number) => Promise<void>;
       serverUpdateOrder: (ids: number[]) => Promise<{ success: boolean }>;
       dialogOpenFile: () => Promise<string | null>;
+      dialogOpenFiles: () => Promise<string[] | null>;
       sshConnect: (serverId: number, sessionId: string) => Promise<{success: boolean, sessionId: string}>;
       sshInput: (sessionId: string, data: string) => void;
       sshResize: (sessionId: string, cols: number, rows: number) => void;
@@ -79,6 +80,17 @@ declare global {
       onSshData: (sessionId: string, callback: (data: string) => void) => void;
       onSshStatus: (sessionId: string, callback: (status: string) => void) => void;
       removeSshListeners: (sessionId: string) => void;
+      
+      // SFTP
+      sftpList: (serverId: number, path: string) => Promise<{ path: string, files: { name: string, isDir: boolean, size: number, mtime: number }[] }>;
+      sftpRead: (serverId: number, path: string) => Promise<string>;
+      sftpWrite: (serverId: number, path: string, content: string) => Promise<{ success: boolean }>;
+      sftpDownload: (serverId: number, path: string, fileName: string) => Promise<{ success: boolean }>;
+      sftpMkdir: (serverId: number, path: string) => Promise<{ success: boolean }>;
+      sftpDelete: (serverId: number, path: string, isDir: boolean) => Promise<{ success: boolean }>;
+      sftpUpload: (serverId: number, localPath: string, remotePath: string) => Promise<{ success: boolean }>;
+      sftpTouch: (serverId: number, path: string) => Promise<{ success: boolean }>;
+
       // Context Graph
       aiIndexProject: () => Promise<IndexResult>;
       aiRetrieveContext: (request: ContextRequest) => Promise<ContextResponse>;

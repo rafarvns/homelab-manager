@@ -48,16 +48,27 @@ async function getSftpClient(serverId: number): Promise<{ client: Client, sftp: 
 export async function listDirectory(serverId: number, path: string) {
   const { client, sftp } = await getSftpClient(serverId);
   return new Promise((resolve, reject) => {
-    sftp.readdir(path, (err, list) => {
-      client.end();
-      if (err) return reject(err);
-      
-      resolve(list.map(item => ({
-        name: item.filename,
-        isDir: item.attrs.isDirectory(),
-        size: item.attrs.size,
-        mtime: item.attrs.mtime
-      })));
+    // Resolve path first (useful for '.' to get home)
+    sftp.realpath(path || '.', (rerr, absPath) => {
+      if (rerr) {
+        client.end();
+        return reject(rerr);
+      }
+
+      sftp.readdir(absPath, (err, list) => {
+        client.end();
+        if (err) return reject(err);
+        
+        resolve({
+          path: absPath,
+          files: list.map(item => ({
+            name: item.filename,
+            isDir: item.attrs.isDirectory(),
+            size: item.attrs.size,
+            mtime: item.attrs.mtime
+          }))
+        });
+      });
     });
   });
 }
@@ -100,5 +111,78 @@ export async function writeFile(serverId: number, path: string, content: string)
     });
     
     stream.end(content);
+  });
+}
+
+export async function downloadFile(serverId: number, remotePath: string, defaultName: string) {
+  const { client, sftp } = await getSftpClient(serverId);
+  const { dialog } = require('electron');
+  
+  const { canceled, filePath: localPath } = await dialog.showSaveDialog({
+    defaultPath: defaultName,
+    title: 'Download File'
+  });
+
+  if (canceled || !localPath) {
+    client.end();
+    return { success: false, message: 'Canceled' };
+  }
+
+  return new Promise((resolve, reject) => {
+    sftp.fastGet(remotePath, localPath, (err) => {
+      client.end();
+      if (err) return reject(err);
+      resolve({ success: true });
+    });
+  });
+}
+
+export async function createDirectory(serverId: number, path: string) {
+  const { client, sftp } = await getSftpClient(serverId);
+  return new Promise((resolve, reject) => {
+    sftp.mkdir(path, (err) => {
+      client.end();
+      if (err) return reject(err);
+      resolve({ success: true });
+    });
+  });
+}
+
+export async function deleteItem(serverId: number, path: string, isDir: boolean) {
+  const { client, sftp } = await getSftpClient(serverId);
+  return new Promise((resolve, reject) => {
+    const callback = (err?: Error) => {
+      client.end();
+      if (err) return reject(err);
+      resolve({ success: true });
+    };
+
+    if (isDir) {
+      sftp.rmdir(path, callback);
+    } else {
+      sftp.unlink(path, callback);
+    }
+  });
+}
+
+export async function uploadFile(serverId: number, localPath: string, remotePath: string) {
+  const { client, sftp } = await getSftpClient(serverId);
+  return new Promise((resolve, reject) => {
+    sftp.fastPut(localPath, remotePath, (err) => {
+      client.end();
+      if (err) return reject(err);
+      resolve({ success: true });
+    });
+  });
+}
+
+export async function createFile(serverId: number, path: string) {
+  const { client, sftp } = await getSftpClient(serverId);
+  return new Promise((resolve, reject) => {
+    sftp.writeFile(path, '', (err) => {
+      client.end();
+      if (err) return reject(err);
+      resolve({ success: true });
+    });
   });
 }

@@ -4,6 +4,7 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 
 import { connectToServer, writeToStream, resizeStream, disconnectSession } from './ssh/ssh-manager'
+import { listDirectory, readFile, writeFile, downloadFile, createDirectory, deleteItem, uploadFile, createFile } from './ssh/sftp-manager'
 import { getAllServers, createServer, updateServer, deleteServer, updateServersOrder } from './handlers/server.handlers'
 import { initDb, getDb } from './db/database'
 import { registerSettingsHandlers } from './handlers/settings.handlers'
@@ -111,15 +112,22 @@ app.whenReady().then(() => {
   ipcMain.handle('server:update', (_, id, serverInput) => updateServer(id, serverInput));
   ipcMain.handle('server:delete', (_, id) => deleteServer(id));
   ipcMain.handle('server:update-order', (_, ids) => updateServersOrder(ids));
-  
   ipcMain.handle('dialog:openFile', async () => {
     const { canceled, filePaths } = await dialog.showOpenDialog({
       properties: ['openFile']
     });
+    if (canceled) return null;
+    return filePaths[0];
+  });
+
+  ipcMain.handle('dialog:openFiles', async () => {
+    const { canceled, filePaths } = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections']
+    });
     if (canceled) {
       return null;
     } else {
-      return filePaths[0];
+      return filePaths;
     }
   });
   
@@ -129,6 +137,16 @@ app.whenReady().then(() => {
   ipcMain.on('ssh:input', (_, sessionId, data) => writeToStream(sessionId, data));
   ipcMain.on('ssh:resize', (_, sessionId, cols, rows) => resizeStream(sessionId, cols, rows));
   ipcMain.on('ssh:disconnect', (_, sessionId) => disconnectSession(sessionId));
+
+  // SFTP Handlers
+  ipcMain.handle('sftp:list', (_, serverId, path) => listDirectory(serverId, path));
+  ipcMain.handle('sftp:read', (_, serverId, path) => readFile(serverId, path));
+  ipcMain.handle('sftp:write', (_, serverId, path, content) => writeFile(serverId, path, content));
+  ipcMain.handle('sftp:download', (_, serverId, path, fileName) => downloadFile(serverId, path, fileName));
+  ipcMain.handle('sftp:mkdir', (_, serverId, path) => createDirectory(serverId, path));
+  ipcMain.handle('sftp:delete', (_, serverId, path, isDir) => deleteItem(serverId, path, isDir));
+  ipcMain.handle('sftp:upload', (_, serverId, localPath, remotePath) => uploadFile(serverId, localPath, remotePath));
+  ipcMain.handle('sftp:touch', (_, serverId, path) => createFile(serverId, path));
 
   createWindow()
 

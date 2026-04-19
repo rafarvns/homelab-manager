@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import * as LucideIcons from 'lucide-react'
-import { Plus, Terminal, X, ChevronLeft, ChevronRight, Settings } from 'lucide-react'
+import { Plus, Terminal, X, ChevronLeft, ChevronRight, Settings, Folder } from 'lucide-react'
 import { useAppStore } from './store'
 import TerminalView from './components/TerminalView'
 import ServerSettings from './components/ServerSettings'
 import ServerForm from './components/ServerForm'
 import AppSettings from './components/AppSettings'
+import FileExplorerView from './components/FileExplorerView'
 import SyncConfigModal from './components/SyncConfigModal'
 
 // Dnd Kit Imports
@@ -197,7 +198,7 @@ const SortableTabItem = ({ session, servers, activeSessionId, onSelect, onClose 
 function App() {
   const { 
     servers, sessions, activeSessionId, activeServerId, isAddModalOpen, isSidebarCollapsed, isGlobalSettingsOpen, isSyncModalOpen,
-    fetchServers, fetchSettings, toggleSidebar, toggleGlobalSettings, openAddModal, addSession, createNewSession, openSettings, setActiveSession, closeSession, switchServerContext,
+    fetchServers, fetchSettings, toggleSidebar, toggleGlobalSettings, openAddModal, addSession, createNewSession, openSettings, openFileExplorer, setActiveSession, closeSession, switchServerContext,
     reorderServers, reorderSessions
   } = useAppStore()
 
@@ -326,10 +327,10 @@ function App() {
                 onDragEnd={handleTabDragEnd}
               >
                 <SortableContext 
-                  items={sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings').map(s => s.id)}
+                  items={sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings' && s.type !== 'file-explorer').map(s => s.id)}
                   strategy={horizontalListSortingStrategy}
                 >
-                  {sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings').map((session) => (
+                  {sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings' && s.type !== 'file-explorer').map((session) => (
                     <SortableTabItem 
                       key={session.id} 
                       session={session}
@@ -350,6 +351,14 @@ function App() {
               </button>
             </div>
             <button 
+              className={`settings-tab-btn ${sessions.find(s => s.id === activeSessionId)?.type === 'file-explorer' ? 'active' : ''}`}
+              style={{ marginRight: '8px' }}
+              onClick={() => openFileExplorer(activeServerId!)}
+              title="File Explorer"
+            >
+              <Folder size={18} />
+            </button>
+            <button 
               className={`settings-tab-btn ${sessions.find(s => s.id === activeSessionId)?.type === 'settings' ? 'active' : ''}`}
               onClick={() => openSettings(activeServerId!)}
               title="Server Settings"
@@ -368,6 +377,17 @@ function App() {
               if (session.type === 'settings' && server) {
                 return (
                   <ServerSettings 
+                    key={session.id} 
+                    server={server} 
+                    isActive={isSelected && !isDifferentServer}
+                    isHidden={!isSelected || isDifferentServer}
+                  />
+                );
+              }
+
+              if (session.type === 'file-explorer' && server) {
+                return (
+                  <FileExplorerView 
                     key={session.id} 
                     server={server} 
                     isActive={isSelected && !isDifferentServer}
