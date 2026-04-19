@@ -490,12 +490,26 @@ body {
 /* Terminal Container */
 .terminal-container {
   flex: 1;
-  padding: 16px;
-  display: none; /* hidden when not active */
+  background-color: #0d1117;
+  position: relative;
+  overflow: hidden;
+  display: none;
 }
 
 .terminal-container.active {
   display: block;
+  animation: view-fast-fade 0.15s cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes view-fast-fade {
+  from {
+    opacity: 0;
+    transform: scale(0.995) translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 /* Modal */
@@ -685,12 +699,19 @@ body {
   display: flex;
   align-items: center;
   border-left: 1px solid var(--panel-border);
+  border-top: 2px solid transparent;
   transition: all 0.2s;
 }
 
-.settings-tab-btn:hover, .settings-tab-btn.active {
-  color: var(--accent-color);
-  background: rgba(88, 166, 255, 0.05);
+.settings-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.settings-tab-btn.active {
+  color: var(--text-primary);
+  background-color: var(--bg-color);
+  border-top-color: var(--accent-color);
 }
 
 /* Settings View */

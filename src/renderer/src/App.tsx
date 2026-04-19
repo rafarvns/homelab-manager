@@ -247,10 +247,10 @@ function App() {
                   onDragEnd={handleTabDragEnd}
                 >
                   <SortableContext 
-                    items={sessions.filter(s => s.serverId === activeServerId).map(s => s.id)}
+                    items={sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings').map(s => s.id)}
                     strategy={horizontalListSortingStrategy}
                   >
-                    {sessions.filter(s => s.serverId === activeServerId).map((session) => (
+                    {sessions.filter(s => s.serverId === activeServerId && s.type !== 'settings').map((session) => (
                       <SortableTabItem 
                         key={session.id} 
                         session={session}

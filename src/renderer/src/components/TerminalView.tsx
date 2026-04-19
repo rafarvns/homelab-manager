@@ -97,10 +97,7 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
   }, [isActive, isHidden, sessionId])
 
   return (
-    <div 
-      className={`terminal-container ${isActive && !isHidden ? 'active' : ''}`} 
-      style={{ height: '100%', width: '100%', display: (isActive && !isHidden) ? 'block' : 'none' }}
-    >
+    <div className={`terminal-container ${isActive && !isHidden ? 'active' : ''}`}>
       <div ref={terminalRef} style={{ height: '100%', width: '100%' }} />
     </div>
   )

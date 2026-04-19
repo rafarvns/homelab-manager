@@ -57,6 +57,12 @@ function migrate() {
       status          TEXT     CHECK(status IN ('success','error')) DEFAULT 'success',
       error_message   TEXT
     );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      key              TEXT PRIMARY KEY,
+      value            TEXT NOT NULL,
+      updated_at       DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `;
 
   db.exec(schema);

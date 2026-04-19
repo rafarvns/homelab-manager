@@ -40,7 +40,7 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
 
   const { fetchServers, switchServerContext } = useAppStore();
 
-  if (isHidden) return null;
+
 
   const handleDelete = async () => {
     try {
@@ -63,7 +63,7 @@ const ServerSettings = ({ server, isActive, isHidden }: ServerSettingsProps) => 
   ];
 
   return (
-    <div className={`terminal-container settings-view ${isActive ? 'active' : ''}`}>
+    <div className={`terminal-container settings-view ${isActive && !isHidden ? 'active' : ''}`}>
       <div className="settings-layout">
         <div className="settings-sidebar">
           <div className="settings-sidebar-header">
