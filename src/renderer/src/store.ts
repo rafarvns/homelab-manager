@@ -30,6 +30,7 @@ interface AppState {
   editingServer: Server | null;
   isSidebarCollapsed: boolean;
   isGlobalSettingsOpen: boolean;
+  isSyncModalOpen: boolean;
   
   setServers: (servers: Server[]) => void;
   fetchServers: () => Promise<void>;
@@ -37,6 +38,7 @@ interface AppState {
   
   toggleSidebar: () => void;
   toggleGlobalSettings: (open: boolean) => void;
+  toggleSyncModal: (open: boolean) => void;
   openAddModal: () => void;
   openEditModal: (server: Server) => void;
   closeAddModal: () => void;
@@ -62,6 +64,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   editingServer: null,
   isSidebarCollapsed: false,
   isGlobalSettingsOpen: false,
+  isSyncModalOpen: false,
   
   setServers: (servers) => set({ servers }),
   
@@ -72,6 +75,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   toggleGlobalSettings: (open) => set({ isGlobalSettingsOpen: open }),
+  toggleSyncModal: (open) => set({ isSyncModalOpen: open }),
   
   fetchSettings: async () => {
     const isCollapsed = await window.api.settingsGet<boolean>('isSidebarCollapsed');

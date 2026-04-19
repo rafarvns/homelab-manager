@@ -7,6 +7,7 @@ import { connectToServer, writeToStream, resizeStream, disconnectSession } from 
 import { getAllServers, createServer, updateServer, deleteServer, updateServersOrder } from './handlers/server.handlers'
 import { initDb } from './db/database'
 import { registerSettingsHandlers } from './handlers/settings.handlers'
+import { registerSyncHandlers } from './handlers/sync.handlers'
 
 function createWindow(): void {
   // Create the browser window.
@@ -57,6 +58,7 @@ app.whenReady().then(() => {
   // Initialize Database
   initDb();
   registerSettingsHandlers();
+  registerSyncHandlers();
 
   ipcMain.handle('server:list', () => getAllServers());
   ipcMain.handle('server:create', (_, serverInput) => createServer(serverInput));

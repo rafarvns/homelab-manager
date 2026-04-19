@@ -23,13 +23,35 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
     // Initialize xterm.js
     const term = new Terminal({
       cursorBlink: true,
-      fontFamily: '"Fira Code", "Consolas", monospace',
+      cursorStyle: 'block',
+      cursorWidth: 2,
+      fontFamily: '"JetBrains Mono", "Fira Code", "Consolas", monospace',
       fontSize: 14,
+      lineHeight: 1.2,
+      scrollback: 10000,
+      allowTransparency: true,
       theme: {
         background: '#0d1117',
         foreground: '#e6edf3',
         cursor: '#58a6ff',
         selectionBackground: 'rgba(88, 166, 255, 0.3)',
+        // ANSI Colors
+        black: '#0d1117',
+        red: '#f85149',
+        green: '#3fb950',
+        yellow: '#d29922',
+        blue: '#58a6ff',
+        magenta: '#bc8cff',
+        cyan: '#39c5cf',
+        white: '#e6edf3',
+        brightBlack: '#484f58',
+        brightRed: '#ff7b72',
+        brightGreen: '#56d364',
+        brightYellow: '#e3b341',
+        brightBlue: '#79c0ff',
+        brightMagenta: '#d2a8ff',
+        brightCyan: '#56d4dd',
+        brightWhite: '#ffffff',
       }
     })
     
@@ -42,6 +64,27 @@ const TerminalView = memo(({ sessionId, isActive, isHidden }: TerminalViewProps)
     
     xtermRef.current = term
     fitAddonRef.current = fitAddon
+
+    // Right-click to Paste
+    terminalRef.current.addEventListener('contextmenu', async (e) => {
+      e.preventDefault();
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) {
+          window.api.sshInput(sessionId, text);
+        }
+      } catch (err) {
+        console.error('Failed to paste:', err);
+      }
+    });
+
+    // Copy on Select
+    term.onSelectionChange(() => {
+      const selection = term.getSelection();
+      if (selection) {
+        navigator.clipboard.writeText(selection);
+      }
+    });
 
     // Send keystrokes to main process
     term.onData(data => {

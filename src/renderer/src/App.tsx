@@ -6,6 +6,7 @@ import TerminalView from './components/TerminalView'
 import ServerSettings from './components/ServerSettings'
 import ServerForm from './components/ServerForm'
 import AppSettings from './components/AppSettings'
+import SyncConfigModal from './components/SyncConfigModal'
 
 // Dnd Kit Imports
 import {
@@ -146,7 +147,7 @@ const SortableTabItem = ({ session, servers, activeSessionId, onSelect, onClose 
 
 function App() {
   const { 
-    servers, sessions, activeSessionId, activeServerId, isAddModalOpen, isSidebarCollapsed, isGlobalSettingsOpen,
+    servers, sessions, activeSessionId, activeServerId, isAddModalOpen, isSidebarCollapsed, isGlobalSettingsOpen, isSyncModalOpen,
     fetchServers, fetchSettings, toggleSidebar, toggleGlobalSettings, openAddModal, addSession, createNewSession, openSettings, setActiveSession, closeSession, switchServerContext,
     reorderServers, reorderSessions
   } = useAppStore()
@@ -328,6 +329,7 @@ function App() {
       </div>
 
       {isAddModalOpen && <ServerForm />}
+      {isSyncModalOpen && <SyncConfigModal />}
     </div>
   )
 }

@@ -89,6 +89,11 @@ declare global {
       settingsGet: <T = any>(key: string) => Promise<T | null>;
       settingsSet: (key: string, value: any) => Promise<{ success: boolean }>;
       settingsGetAll: () => Promise<Record<string, any>>;
+
+      // Sync
+      syncTestConnection: (config: any) => Promise<{ success: boolean; message: string }>;
+      syncPush: (config: any, passphrase: string) => Promise<{ success: boolean; message: string }>;
+      syncPull: (config: any, passphrase: string) => Promise<{ success: boolean; message: string }>;
     }
   }
 }

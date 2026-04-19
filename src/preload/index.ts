@@ -34,6 +34,10 @@ const api = {
   settingsGet: (key: string) => ipcRenderer.invoke('settings:get', key),
   settingsSet: (key: string, value: any) => ipcRenderer.invoke('settings:set', key, value),
   settingsGetAll: () => ipcRenderer.invoke('settings:getAll'),
+  // Sync
+  syncTestConnection: (config: any) => ipcRenderer.invoke('sync:test-connection', config),
+  syncPush: (config: any, passphrase: string) => ipcRenderer.invoke('sync:push', config, passphrase),
+  syncPull: (config: any, passphrase: string) => ipcRenderer.invoke('sync:pull', config, passphrase),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

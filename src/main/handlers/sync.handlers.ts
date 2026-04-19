@@ -1,0 +1,30 @@
+import { ipcMain } from 'electron';
+import { SyncService, SyncConfig } from '../sync/sync-service';
+import { decrypt, encrypt } from '../db/security';
+
+export function registerSyncHandlers() {
+  ipcMain.handle('sync:test-connection', async (_, config: SyncConfig) => {
+    // Decrypt credentials if they were stored in local DB
+    const processedConfig = { ...config };
+    if (processedConfig.password) processedConfig.password = decrypt(processedConfig.password)!;
+    if (processedConfig.private_key_path) processedConfig.private_key_path = decrypt(processedConfig.private_key_path)!;
+    
+    return await SyncService.testConnection(processedConfig);
+  });
+
+  ipcMain.handle('sync:push', async (_, config: SyncConfig, passphrase: string) => {
+    const processedConfig = { ...config };
+    if (processedConfig.password) processedConfig.password = decrypt(processedConfig.password)!;
+    if (processedConfig.private_key_path) processedConfig.private_key_path = decrypt(processedConfig.private_key_path)!;
+
+    return await SyncService.push(processedConfig, passphrase);
+  });
+
+  ipcMain.handle('sync:pull', async (_, config: SyncConfig, passphrase: string) => {
+    const processedConfig = { ...config };
+    if (processedConfig.password) processedConfig.password = decrypt(processedConfig.password)!;
+    if (processedConfig.private_key_path) processedConfig.private_key_path = decrypt(processedConfig.private_key_path)!;
+
+    return await SyncService.pull(processedConfig, passphrase);
+  });
+}
