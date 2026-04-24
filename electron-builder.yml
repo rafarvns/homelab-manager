@@ -1,6 +1,6 @@
 appId: com.livresolucoes.homelab-manager
 productName: Homelab Manager
-npmRebuild: false
+npmRebuild: true
 asarUnpack:
   - "**/node_modules/better-sqlite3/**"
 directories:
