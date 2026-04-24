@@ -2,7 +2,12 @@
   "permissions": {
     "allow": [
       "Bash(pnpm add *)",
-      "Bash(pnpm typecheck *)"
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm build:unpack)",
+      "Bash(pnpm remove *)",
+      "Bash(start \"\" \"Homelab Manager.exe\")",
+      "Bash(tasklist)",
+      "Bash(taskkill /F /IM \"Homelab Manager.exe\")"
     ]
   }
 }

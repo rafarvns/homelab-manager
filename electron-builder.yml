@@ -1,6 +1,8 @@
 appId: com.livresolucoes.homelab-manager
 productName: Homelab Manager
 npmRebuild: false
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
 directories:
   output: dist-electron
 publish:
