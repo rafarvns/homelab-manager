@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "description": "Homelab Manager - SSH, Docker and service management for self-hosted infrastructure",
   "main": "./out/main/index.js",
-  "author": "rafarvns",
+  "author": {
+    "name": "rafarvns",
+    "email": "rafarvns@gmail.com"
+  },
   "homepage": "https://github.com/rafarvns/homelab-manager",
   "scripts": {
     "format": "prettier --write .",
