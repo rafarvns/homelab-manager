@@ -65,6 +65,22 @@ const api = {
     ipcRenderer.on('sync:data-updated', () => callback());
   },
   openExternal: (url: string) => ipcRenderer.send('shell:openExternal', url),
+  // Auto-update
+  updateCheck: () => ipcRenderer.invoke('update:check'),
+  updateDownload: () => ipcRenderer.send('update:download'),
+  updateInstall: () => ipcRenderer.send('update:install'),
+  onUpdateAvailable: (callback: (info: { version: string }) => void) => {
+    ipcRenderer.on('update:available', (_, info) => callback(info))
+  },
+  onUpdateProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => {
+    ipcRenderer.on('update:progress', (_, progress) => callback(progress))
+  },
+  onUpdateDownloaded: (callback: (info: { version: string }) => void) => {
+    ipcRenderer.on('update:downloaded', (_, info) => callback(info))
+  },
+  onUpdateError: (callback: (message: string) => void) => {
+    ipcRenderer.on('update:error', (_, message) => callback(message))
+  },
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

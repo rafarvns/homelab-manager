@@ -14,6 +14,7 @@ import { listServices, controlService, getServiceLogs } from './ssh/services-man
 import { listDockerContainers, controlDockerContainer, getDockerLogs } from './ssh/docker-manager'
 import { setDockerAlias } from './handlers/docker.handlers'
 import { getFirewallStatus, controlFirewall } from './ssh/firewall-manager'
+import { registerUpdaterHandlers, startUpdateCheck } from './handlers/updater.handlers'
 
 function getWindowState() {
   try {
@@ -41,7 +42,7 @@ function saveWindowState(window: BrowserWindow) {
   }
 }
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const savedState = getWindowState()
 
   // Create the browser window.
@@ -90,6 +91,8 @@ function createWindow(): void {
   } else {
     mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  return mainWindow
 }
 
 
@@ -168,7 +171,9 @@ app.whenReady().then(() => {
 
   ipcMain.on('shell:openExternal', (_, url) => shell.openExternal(url));
 
-  createWindow()
+  const mainWindow = createWindow()
+  registerUpdaterHandlers(mainWindow)
+  startUpdateCheck()
 
   // ── Dev-only: Context Graph (AI tooling) ──────────────────────────
   // Dynamic import keeps the entire ai/ module OUT of the production

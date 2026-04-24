@@ -153,6 +153,14 @@ declare global {
       syncGetLocalStats: () => Promise<{ size: number }>;
       onSyncDataUpdated: (callback: () => void) => void;
       openExternal: (url: string) => void;
+      // Auto-update
+      updateCheck: () => Promise<void>;
+      updateDownload: () => void;
+      updateInstall: () => void;
+      onUpdateAvailable: (callback: (info: { version: string }) => void) => void;
+      onUpdateProgress: (callback: (progress: { percent: number; transferred: number; total: number }) => void) => void;
+      onUpdateDownloaded: (callback: (info: { version: string }) => void) => void;
+      onUpdateError: (callback: (message: string) => void) => void;
     }
   }
 }

@@ -8,6 +8,7 @@ import ServerForm from './components/ServerForm'
 import AppSettings from './components/AppSettings'
 import FileExplorerView from './components/FileExplorerView'
 import SyncConfigModal from './components/SyncConfigModal'
+import UpdateBanner from './components/UpdateBanner'
 
 // Dnd Kit Imports
 import {
@@ -411,6 +412,7 @@ function App() {
 
       {isAddModalOpen && <ServerForm />}
       {isSyncModalOpen && <SyncConfigModal />}
+      <UpdateBanner />
     </div>
   )
 }

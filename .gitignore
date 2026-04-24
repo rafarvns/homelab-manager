@@ -46,6 +46,9 @@ Desktop.ini
 .env.test.local
 .env.production.local
 
+# Electron build output
+dist-electron/
+
 # Electron / Native extensions
 *.node
 *.pdb
