@@ -10,59 +10,36 @@ concurrency:
   group: release
   cancel-in-progress: false
 
-# Needed to push the version bump commit and create releases
 permissions:
   contents: write
 
 jobs:
   # ─────────────────────────────────────────────────────────────────────────────
-  # 1. Bump the patch version and push back to main
-  # Loop-proofing:
-  #   • [skip ci] in the commit message → GitHub won't trigger ANY workflow
-  #   • github.actor check → secondary guard in case [skip ci] is ever ignored
+  # 1. Lê a versão do package.json e cria a tag
   # ─────────────────────────────────────────────────────────────────────────────
-  version-bump:
-    name: Bump Version
+  prepare:
+    name: Prepare Release
     runs-on: ubuntu-latest
-    if: github.actor != 'github-actions[bot]'
     outputs:
-      new_version: ${{ steps.bump.outputs.new_version }}
-      tag_name: ${{ steps.bump.outputs.tag_name }}
-      commit_sha: ${{ steps.push.outputs.sha }}
+      version: ${{ steps.read.outputs.version }}
+      tag_name: ${{ steps.read.outputs.tag_name }}
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Bump patch version
-        id: bump
+      - name: Read version from package.json
+        id: read
         run: |
-          raw=$(npm version patch --no-git-tag-version)
-          new_version="${raw#v}"
-          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
-          echo "tag_name=v$new_version"   >> "$GITHUB_OUTPUT"
-
-      - name: Commit and push
-        id: push
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add package.json
-          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
-          git push
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          version=$(node -p "require('./package.json').version")
+          echo "version=$version"       >> "$GITHUB_OUTPUT"
+          echo "tag_name=v$version"     >> "$GITHUB_OUTPUT"
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 2. Build executables for each platform using the bumped package.json
+  # 2. Build nos três sistemas operacionais
   # ─────────────────────────────────────────────────────────────────────────────
   build:
     name: Build / ${{ matrix.artifact }}
-    needs: version-bump
+    needs: prepare
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -80,9 +57,6 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          # Pin to the exact version-bump commit so all platforms build the same version
-          ref: ${{ needs.version-bump.outputs.commit_sha }}
 
       - uses: pnpm/action-setup@v4
         with:
@@ -100,7 +74,6 @@ jobs:
         run: pnpm ${{ matrix.build_cmd }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Disable macOS code-signing auto-discovery (no certificate configured)
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
       - uses: actions/upload-artifact@v4
@@ -110,11 +83,11 @@ jobs:
           if-no-files-found: error
 
   # ─────────────────────────────────────────────────────────────────────────────
-  # 3. Publish a GitHub Release with all platform artifacts
+  # 3. Publica o GitHub Release com os artefatos de todas as plataformas
   # ─────────────────────────────────────────────────────────────────────────────
   release:
     name: Create GitHub Release
-    needs: [version-bump, build]
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -128,8 +101,8 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.version-bump.outputs.tag_name }}
-          name: Homelab Manager ${{ needs.version-bump.outputs.tag_name }}
+          tag_name: ${{ needs.prepare.outputs.tag_name }}
+          name: Homelab Manager ${{ needs.prepare.outputs.tag_name }}
           generate_release_notes: true
           files: |
             artifacts/**/*.exe
