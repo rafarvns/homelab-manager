@@ -1,6 +1,6 @@
 {
   "name": "homelab-manager",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Homelab Manager - SSH, Docker and service management for self-hosted infrastructure",
   "main": "./out/main/index.js",
   "author": {
