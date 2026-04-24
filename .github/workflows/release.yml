@@ -1,0 +1,140 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+
+# Prevent overlapping release runs
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+# Needed to push the version bump commit and create releases
+permissions:
+  contents: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 1. Bump the patch version and push back to main
+  # Loop-proofing:
+  #   • [skip ci] in the commit message → GitHub won't trigger ANY workflow
+  #   • github.actor check → secondary guard in case [skip ci] is ever ignored
+  # ─────────────────────────────────────────────────────────────────────────────
+  version-bump:
+    name: Bump Version
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    outputs:
+      new_version: ${{ steps.bump.outputs.new_version }}
+      tag_name: ${{ steps.bump.outputs.tag_name }}
+      commit_sha: ${{ steps.push.outputs.sha }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Bump patch version
+        id: bump
+        run: |
+          raw=$(npm version patch --no-git-tag-version)
+          new_version="${raw#v}"
+          echo "new_version=$new_version" >> "$GITHUB_OUTPUT"
+          echo "tag_name=v$new_version"   >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push
+        id: push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add package.json
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.new_version }} [skip ci]"
+          git push
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 2. Build executables for each platform using the bumped package.json
+  # ─────────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build / ${{ matrix.artifact }}
+    needs: version-bump
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            build_cmd: build:win
+            artifact: windows
+          - os: macos-latest
+            build_cmd: build:mac
+            artifact: macos
+          - os: ubuntu-latest
+            build_cmd: build:linux
+            artifact: linux
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Pin to the exact version-bump commit so all platforms build the same version
+          ref: ${{ needs.version-bump.outputs.commit_sha }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build (${{ matrix.artifact }})
+        run: pnpm ${{ matrix.build_cmd }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Disable macOS code-signing auto-discovery (no certificate configured)
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-${{ matrix.artifact }}
+          path: dist-electron/
+          if-no-files-found: error
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # 3. Publish a GitHub Release with all platform artifacts
+  # ─────────────────────────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [version-bump, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: false
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version-bump.outputs.tag_name }}
+          name: Homelab Manager ${{ needs.version-bump.outputs.tag_name }}
+          generate_release_notes: true
+          files: |
+            artifacts/**/*.exe
+            artifacts/**/*.dmg
+            artifacts/**/*.AppImage
+            artifacts/**/*.deb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
