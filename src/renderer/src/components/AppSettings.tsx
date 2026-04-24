@@ -15,6 +15,14 @@ const AppSettings = () => {
   const [passphraseAction, setPassphraseAction] = useState<'push' | 'pull' | 'auto-sync' | null>(null);
   const [showPassphrasePrompt, setShowPassphrasePrompt] = useState(false);
   const [promptPassphrase, setPromptPassphrase] = useState('');
+  const [syncing, setSyncing] = useState<'push' | 'pull' | null>(null);
+  
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [notification, setNotification] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
+  const [syncProvider, setSyncProvider] = useState<'sftp' | 'gdrive'>('sftp');
+  const [gdriveAccount, setGdriveAccount] = useState<{ email?: string; status: string }>({ status: 'Disconnected' });
+  const [showGDriveModal, setShowGDriveModal] = useState(false);
+  const [gdriveConfig, setGdriveConfig] = useState({ client_id: '', client_secret: '' });
 
   const { toggleGlobalSettings, toggleSyncModal, isAutoSyncEnabled, setAutoSync, fetchAutoSyncStatus, fetchServers, fetchSettings } = useAppStore();
 
@@ -130,13 +138,7 @@ const AppSettings = () => {
   const handleExecutePush = async (config: any, passphrase: string) => {
     setPassphraseAction(null);
     setNotification({ type: null, message: '' });
-    // We reuse the 'syncing' state for UI buttons
-    const setSyncingState = (state: any) => {
-      // This is a bit hacky because we want to show the spinner on the button
-      const pullBtn = document.querySelector('.btn-pull');
-      const pushBtn = document.querySelector('.btn-push');
-      // Actually, let's just use the 'syncing' state we already have
-    };
+    setSyncing('push');
 
     setNotification({ type: 'success', message: 'Pushing workspace data...' });
     try {
@@ -152,11 +154,14 @@ const AppSettings = () => {
       }
     } catch (err: any) {
       setNotification({ type: 'error', message: "Error: " + err.message });
+    } finally {
+      setSyncing(null);
     }
   };
 
   const handleExecutePull = async (config: any, passphrase: string) => {
     setNotification({ type: 'success', message: 'Pulling and merging data...' });
+    setSyncing('pull');
     try {
       const result = await window.api.syncPull(config, passphrase);
       if (result.success) {
@@ -169,6 +174,8 @@ const AppSettings = () => {
       }
     } catch (err: any) {
       setNotification({ type: 'error', message: "Error: " + err.message });
+    } finally {
+      setSyncing(null);
     }
   };
 
