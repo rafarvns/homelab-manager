@@ -9,6 +9,9 @@ publish:
   provider: github
   owner: rafarvns
   repo: homelab-manager
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 win:
   target: [nsis, portable]
   icon: build/icon.ico
