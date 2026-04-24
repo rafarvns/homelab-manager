@@ -1,12 +1,17 @@
 appId: com.livresolucoes.homelab-manager
 productName: Homelab Manager
 npmRebuild: false
+asarUnpack:
+  - "**/node_modules/better-sqlite3/**"
 directories:
   output: dist-electron
 publish:
   provider: github
   owner: rafarvns
   repo: homelab-manager
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 win:
   target: [nsis, portable]
   icon: build/icon.ico

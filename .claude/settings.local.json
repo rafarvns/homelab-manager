@@ -2,7 +2,18 @@
   "permissions": {
     "allow": [
       "Bash(pnpm add *)",
-      "Bash(pnpm typecheck *)"
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm build:unpack)",
+      "Bash(pnpm remove *)",
+      "Bash(start \"\" \"Homelab Manager.exe\")",
+      "Bash(tasklist)",
+      "Bash(taskkill /F /IM \"Homelab Manager.exe\")",
+      "Bash(pnpm build:win)",
+      "Bash(cmd /c \"rmdir /S /Q \\\\\"E:\\\\LivreSolucoes\\\\homelab-manager\\\\dist-electron\\\\\"\")",
+      "Bash(taskkill /F /PID 9204 /PID 25040 /PID 11248 /PID 5828)",
+      "Bash(cmd /c \"taskkill /F /PID 9204 & taskkill /F /PID 25040 & taskkill /F /PID 11248 & taskkill /F /PID 5828\")",
+      "Bash(cmd /c \"move /Y \\\\\"E:\\\\LivreSolucoes\\\\homelab-manager\\\\dist-electron\\\\\" \\\\\"E:\\\\LivreSolucoes\\\\homelab-manager\\\\dist-electron-old\\\\\"\")",
+      "Bash(cmd *)"
     ]
   }
 }
