@@ -12,7 +12,11 @@ const AppSettings = () => {
   const [activeTab, setActiveTab] = useState<SettingsTab>('sync');
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [fileSize, setFileSize] = useState<number | null>(null);
+  const [passphraseAction, setPassphraseAction] = useState<'push' | 'pull' | 'auto-sync' | null>(null);
+  const [showPassphrasePrompt, setShowPassphrasePrompt] = useState(false);
+  const [promptPassphrase, setPromptPassphrase] = useState('');
   const [syncing, setSyncing] = useState<'push' | 'pull' | null>(null);
+  
   const [showTutorial, setShowTutorial] = useState(false);
   const [notification, setNotification] = useState<{ type: 'success' | 'error' | null; message: string }>({ type: null, message: '' });
   const [syncProvider, setSyncProvider] = useState<'sftp' | 'gdrive'>('sftp');
@@ -60,9 +64,6 @@ const AppSettings = () => {
     return undefined;
   }, [notification]);
 
-  const [showPassphrasePrompt, setShowPassphrasePrompt] = useState(false);
-  const [promptPassphrase, setPromptPassphrase] = useState('');
-
   const toggleAutoSync = async () => {
     console.log('[AppSettings] Toggling Auto-Sync. Current state:', isAutoSyncEnabled);
     if (!isAutoSyncEnabled) {
@@ -77,7 +78,7 @@ const AppSettings = () => {
           return;
         }
 
-        // Open custom prompt instead of window.prompt
+        setPassphraseAction('auto-sync');
         setShowPassphrasePrompt(true);
       } catch (err: any) {
         console.error('[AppSettings] Failed to enable auto-sync:', err);
@@ -96,33 +97,85 @@ const AppSettings = () => {
     }
   };
 
-  const handleConfirmAutoSync = async () => {
+  const handleConfirmPassphrase = async () => {
     if (!promptPassphrase.trim()) return;
-
+    const action = passphraseAction;
+    const passphrase = promptPassphrase;
+    
     setShowPassphrasePrompt(false);
-    setNotification({ type: 'success', message: 'Encrypting and saving secure credentials...' });
+    setPromptPassphrase('');
+    setPassphraseAction(null);
 
-    try {
-      const config = await window.api.settingsGet('sync_sftp_config');
-      await window.api.syncSetSecurePassphrase(promptPassphrase);
-      await setAutoSync(true);
-      setNotification({ type: 'success', message: 'Auto-Sync enabled! Pushing initial state...' });
-      
-      // Push initial state
-      window.api.syncPush(config, promptPassphrase).then(res => {
-         if (res.success) {
+    const config = await window.api.settingsGet('sync_sftp_config');
+
+    if (action === 'auto-sync') {
+      setNotification({ type: 'success', message: 'Encrypting and saving secure credentials...' });
+      try {
+        await window.api.syncSetSecurePassphrase(passphrase);
+        await setAutoSync(true);
+        setNotification({ type: 'success', message: 'Auto-Sync enabled! Pushing initial state...' });
+        
+        const res = await window.api.syncPush(config, passphrase);
+        if (res.success) {
           const now = new Date().toISOString();
           window.api.settingsSet('sync_last_at', now);
           setLastSync(now);
-          console.log('[AppSettings] Initial auto-push success.');
-         } else {
-           console.error('[AppSettings] Initial auto-push failed:', res.message);
-           setNotification({ type: 'error', message: "Sync error: " + res.message });
-         }
-      });
-      setPromptPassphrase('');
+          setNotification({ type: 'success', message: 'Auto-Sync enabled and initial push successful.' });
+        } else {
+          setNotification({ type: 'error', message: "Sync error: " + res.message });
+        }
+      } catch (err: any) {
+        setNotification({ type: 'error', message: "Failed: " + err.message });
+      }
+    } else if (action === 'push') {
+      setPassphraseAction('push'); // Keep for UI spinner if needed, but we use 'syncing'
+      handleExecutePush(config, passphrase);
+    } else if (action === 'pull') {
+      handleExecutePull(config, passphrase);
+    }
+  };
+
+  const handleExecutePush = async (config: any, passphrase: string) => {
+    setPassphraseAction(null);
+    setNotification({ type: null, message: '' });
+    setSyncing('push');
+
+    setNotification({ type: 'success', message: 'Pushing workspace data...' });
+    try {
+      const result = await window.api.syncPush(config, passphrase);
+      if (result.success) {
+        const now = new Date().toISOString();
+        await window.api.settingsSet('sync_last_at', now);
+        setLastSync(now);
+        await fetchSyncStats();
+        setNotification({ type: 'success', message: 'Data pushed successfully!' });
+      } else {
+        setNotification({ type: 'error', message: "Push failed: " + result.message });
+      }
     } catch (err: any) {
-      setNotification({ type: 'error', message: "Failed: " + err.message });
+      setNotification({ type: 'error', message: "Error: " + err.message });
+    } finally {
+      setSyncing(null);
+    }
+  };
+
+  const handleExecutePull = async (config: any, passphrase: string) => {
+    setNotification({ type: 'success', message: 'Pulling and merging data...' });
+    setSyncing('pull');
+    try {
+      const result = await window.api.syncPull(config, passphrase);
+      if (result.success) {
+        setNotification({ type: 'success', message: 'Data pulled and merged successfully!' });
+        fetchServers();
+        fetchSettings();
+        await fetchSyncStats();
+      } else {
+        setNotification({ type: 'error', message: "Pull failed: " + result.message });
+      }
+    } catch (err: any) {
+      setNotification({ type: 'error', message: "Error: " + err.message });
+    } finally {
+      setSyncing(null);
     }
   };
 
@@ -166,27 +219,8 @@ const AppSettings = () => {
       toggleSyncModal(true);
       return;
     }
-    const passphrase = window.prompt("Enter your Sync Passphrase to PUSH data:");
-    if (!passphrase) return;
-
-    setSyncing('push');
-    setNotification({ type: null, message: '' });
-    try {
-      const result = await window.api.syncPush(config, passphrase);
-      if (result.success) {
-        const now = new Date().toISOString();
-        await window.api.settingsSet('sync_last_at', now);
-        setLastSync(now);
-        await fetchSyncStats();
-        setNotification({ type: 'success', message: 'Data pushed successfully!' });
-      } else {
-        setNotification({ type: 'error', message: "Push failed: " + result.message });
-      }
-    } catch (err: any) {
-      setNotification({ type: 'error', message: "Error: " + err.message });
-    } finally {
-      setSyncing(null);
-    }
+    setPassphraseAction('push');
+    setShowPassphrasePrompt(true);
   };
 
   const handlePull = async () => {
@@ -195,26 +229,8 @@ const AppSettings = () => {
       toggleSyncModal(true);
       return;
     }
-    const passphrase = window.prompt("Enter your Sync Passphrase to PULL and MERGE data:");
-    if (!passphrase) return;
-
-    setSyncing('pull');
-    setNotification({ type: null, message: '' });
-    try {
-      const result = await window.api.syncPull(config, passphrase);
-      if (result.success) {
-        setNotification({ type: 'success', message: 'Data pulled and merged successfully!' });
-        fetchServers();
-        fetchSettings();
-        await fetchSyncStats();
-      } else {
-        setNotification({ type: 'error', message: "Pull failed: " + result.message });
-      }
-    } catch (err: any) {
-      setNotification({ type: 'error', message: "Error: " + err.message });
-    } finally {
-      setSyncing(null);
-    }
+    setPassphraseAction('pull');
+    setShowPassphrasePrompt(true);
   };
 
   const tabs: { id: SettingsTab; label: string; icon: any }[] = [
@@ -234,11 +250,16 @@ const AppSettings = () => {
               <div style={{ background: 'var(--accent-color)', padding: '10px', borderRadius: '10px', color: 'white' }}>
                 <Lock size={20} />
               </div>
-              <h3 style={{ margin: 0 }}>Enable Auto-Sync</h3>
+              <h3 style={{ margin: 0 }}>
+                {passphraseAction === 'pull' ? 'Pull & Merge Data' : 
+                 passphraseAction === 'push' ? 'Push Workspace' : 'Enable Auto-Sync'}
+              </h3>
             </div>
             
             <p style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '20px' }}>
-              Enter your <strong>Sync Passphrase</strong>. It will be stored securely on this machine to allow automated background operations.
+              {passphraseAction === 'pull' ? 'Enter your passphrase to decrypt and merge remote data.' : 
+               passphraseAction === 'push' ? 'Enter your passphrase to encrypt and upload your workspace.' :
+               'Enter your Sync Passphrase. It will be stored securely on this machine to allow automated background operations.'}
             </p>
 
             <div className="form-group">
@@ -249,14 +270,15 @@ const AppSettings = () => {
                 value={promptPassphrase} 
                 onChange={e => setPromptPassphrase(e.target.value)}
                 placeholder="Enter passphrase"
-                onKeyDown={e => e.key === 'Enter' && handleConfirmAutoSync()}
+                onKeyDown={e => e.key === 'Enter' && handleConfirmPassphrase()}
               />
             </div>
 
             <div className="modal-actions" style={{ marginTop: '24px' }}>
-              <button className="btn btn-secondary" onClick={() => { setShowPassphrasePrompt(false); setPromptPassphrase(''); }}>Cancel</button>
-              <button className="btn btn-primary" onClick={handleConfirmAutoSync} disabled={!promptPassphrase.trim()}>
-                Confirm & Enable
+              <button className="btn btn-secondary" onClick={() => { setShowPassphrasePrompt(false); setPromptPassphrase(''); setPassphraseAction(null); }}>Cancel</button>
+              <button className="btn btn-primary" onClick={handleConfirmPassphrase} disabled={!promptPassphrase.trim()}>
+                {passphraseAction === 'pull' ? 'Confirm & Pull' : 
+                 passphraseAction === 'push' ? 'Confirm & Push' : 'Confirm & Enable'}
               </button>
             </div>
           </div>
